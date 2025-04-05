@@ -48,13 +48,36 @@ impl Spreadsheet {
 
     fn scroll(&mut self, direction: &str) {
         match direction {
-            "w" if self.view_top > 0 => self.view_top -= 1,
-            "s" if self.view_top + 10 < self.rows => self.view_top += 1,
-            "a" if self.view_left > 0 => self.view_left -= 1,
-            "d" if self.view_left + 10 < self.cols => self.view_left += 1,
+            "w" => {
+                if self.view_top >= 10 {
+                    self.view_top -= 10;
+                } else {
+                    self.view_top = 0;
+                }
+            }
+            "s" => {
+                if self.view_top + 10 < self.rows {
+                    let remaining = self.rows - self.view_top - 10;
+                    self.view_top += remaining.min(10);
+                }
+            }
+            "a" => {
+                if self.view_left >= 10 {
+                    self.view_left -= 10;
+                } else {
+                    self.view_left = 0;
+                }
+            }
+            "d" => {
+                if self.view_left + 10 < self.cols {
+                    let remaining = self.cols - self.view_left - 10;
+                    self.view_left += remaining.min(10);
+                }
+            }
             _ => {}
         }
     }
+    
 }
 
 fn main() {
