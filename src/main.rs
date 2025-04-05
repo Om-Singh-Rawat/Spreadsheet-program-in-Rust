@@ -21,22 +21,24 @@ impl Spreadsheet {
     }
 
     fn print_grid(&self) {
-        for i in self.view_top..self.view_top + 10 {
-            if i >= self.rows {
-                break;
-            }
-            for j in self.view_left..self.view_left + 10 {
-                if j >= self.cols {
-                    break;
-                }
-                if j == 0 {
-                    print!("{:<4}", i + 1);
-                }
+        // Print top-left corner spacing
+        print!("{:<4}", ""); 
+    
+        // Print column headers
+        for j in self.view_left..(self.view_left + 10).min(self.cols) {
+            print!("{:<4}", j + 1); // 1-based indexing
+        }
+        println!();
+    
+        // Print rows with row numbers and cell data
+        for i in self.view_top..(self.view_top + 10).min(self.rows) {
+            print!("{:<4}", i + 1); // Row number
+            for j in self.view_left..(self.view_left + 10).min(self.cols) {
                 print!("{:<4}", self.grid[i][j]);
             }
             println!();
         }
-    }
+    }    
 
     fn update_cell(&mut self, row: usize, col: usize, value: i32) {
         if row < self.rows && col < self.cols {
