@@ -1,4 +1,4 @@
-use std::io::{self, Write};
+use std::io::Write;
 
 struct Spreadsheet {
     grid: Vec<Vec<i32>>,
@@ -20,13 +20,27 @@ impl Spreadsheet {
         }
     }
 
+    fn column_index_to_label(mut index: usize) -> String {
+        let mut label = String::new();
+        index += 1; // Convert to 1-based
+    
+        while index > 0 {
+            let rem = (index - 1) % 26;
+            label.insert(0, (b'A' + rem as u8) as char);
+            index = (index - 1) / 26;
+        }
+    
+        label
+    }    
+
     fn print_grid(&self) {
         // Print top-left corner spacing
         print!("{:<4}", ""); 
     
         // Print column headers
         for j in self.view_left..(self.view_left + 10).min(self.cols) {
-            print!("{:<4}", j + 1); // 1-based indexing
+            let label = Self::column_index_to_label(j);
+            print!("{:<4}", label); // 1-based indexing
         }
         println!();
     
@@ -87,8 +101,23 @@ fn main() {
         return;
     }
 
-    let rows: usize = args[1].parse().unwrap_or(10);
-    let cols: usize = args[2].parse().unwrap_or(10);
+    let rows: usize = args[1].parse().unwrap_or(0);
+    let cols: usize = args[2].parse().unwrap_or(0);
+
+    if rows == 0 || cols == 0 {
+        println!("Row and column values must be greater than 0.");
+        return;
+    }
+
+    if rows > 999 {
+        println!("Maximum number of rows is 999.");
+        return;
+    }
+
+    if cols > 18278 {
+        println!("Maximum number of columns is 18278 (up to column 'ZZZ').");
+        return;
+    }
 
     let mut spreadsheet = Spreadsheet::new(rows, cols);
 
@@ -97,10 +126,10 @@ fn main() {
 
         println!("\nUse WASD to scroll, input 'q' to quit, or 'r c v' to update cell (row, col, value):");
         print!("> ");
-        io::stdout().flush().unwrap();
+        std::io::stdout().flush().unwrap();
 
         let mut input = String::new();
-        io::stdin().read_line(&mut input).unwrap();
+        std::io::stdin().read_line(&mut input).unwrap();
         let input = input.trim();
 
         if input == "q" {
@@ -111,8 +140,10 @@ fn main() {
             spreadsheet.scroll(input);
         } else if let Some((row_str, rest)) = input.split_once(" ") {
             if let Some((col_str, value_str)) = rest.split_once(" ") {
-                if let (Ok(row), Ok(col), Ok(value)) = (row_str.parse::<usize>(), col_str.parse::<usize>(), value_str.parse::<i32>()) {
-                    spreadsheet.update_cell(row - 1, col - 1, value);  // Convert to 0-based index
+                if let (Ok(row), Ok(col), Ok(value)) =
+                    (row_str.parse::<usize>(), col_str.parse::<usize>(), value_str.parse::<i32>())
+                {
+                    spreadsheet.update_cell(row - 1, col - 1, value);
                 }
             }
         }
