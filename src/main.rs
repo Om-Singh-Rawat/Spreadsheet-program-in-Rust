@@ -1,11 +1,21 @@
-use std::io::Write;
+use std::io::{self, Write};
 
+/// The AST for expressions.
+enum Expression {
+    Literal(i32),
+    Cell(usize, usize),
+    BinaryOp(Box<Expression>, char, Box<Expression>),
+    Function(String, String), // e.g., Function("MAX", "B1:B9")
+}
+
+/// The Spreadsheet struct encapsulating the grid and view parameters.
 struct Spreadsheet {
     grid: Vec<Vec<i32>>,
     rows: usize,
     cols: usize,
     view_top: usize,
     view_left: usize,
+    output_enabled: bool, // for disable/enable output commands
 }
 
 impl Spreadsheet {
@@ -17,6 +27,7 @@ impl Spreadsheet {
             cols,
             view_top: 0,
             view_left: 0,
+            output_enabled: true,
         }
     }
 
@@ -43,6 +54,10 @@ impl Spreadsheet {
     }
 
     fn print_grid(&self) {
+        // Only print if output is enabled.
+        if !self.output_enabled {
+            return;
+        }
         print!("{:<4}", "");
         for j in self.view_left..(self.view_left + 10).min(self.cols) {
             print!("{:<4}", Self::column_index_to_label(j));
@@ -80,69 +95,147 @@ impl Spreadsheet {
         Some((row, col))
     }
 
-    fn handle_assignment(&mut self, input: &str) -> Result<(), String> {
-        if let Some((left, expr)) = input.split_once('=') {
-            let left = left.trim();
-            if let Some((target_row, target_col)) = Self::parse_cell_reference(left) {
-                let expr = expr.trim().replace(" ", "");
-                let operator = expr.chars().find(|c| "+-*/".contains(*c));
-    
-                let get_value = |s: &str| {
-                    if let Ok(val) = s.parse::<i32>() {
-                        Some(val)
-                    } else if let Some((r, c)) = Self::parse_cell_reference(s) {
-                        self.get_cell_value(r, c)
-                    } else {
-                        None
-                    }
-                };
-    
-                if let Some(op) = operator {
-                    let parts: Vec<&str> = expr.split(op).collect();
-                    if parts.len() != 2 {
-                        return Err("Invalid expression format.".to_string());
-                    }
-    
-                    if let (Some(val1), Some(val2)) = (get_value(parts[0]), get_value(parts[1])) {
-                        let result = match op {
-                            '+' => val1 + val2,
-                            '-' => val1 - val2,
-                            '*' => val1 * val2,
-                            '/' => {
-                                if val2 == 0 {
-                                    return Err("Division by zero.".to_string());
-                                } else {
-                                    val1 / val2
-                                }
-                            }
-                            _ => return Err("Unsupported operator.".to_string()),
-                        };
-                        self.update_cell(target_row, target_col, result);
-                        Ok(())
-                    } else {
-                        Err("Invalid values in expression.".to_string())
-                    }
-                } else if let Ok(val) = expr.parse::<i32>() {
-                    self.update_cell(target_row, target_col, val);
-                    Ok(())
-                } else if let Some((r, c)) = Self::parse_cell_reference(&expr) {
-                    if let Some(val) = self.get_cell_value(r, c) {
-                        self.update_cell(target_row, target_col, val);
-                        Ok(())
-                    } else {
-                        Err("Invalid cell reference.".to_string())
-                    }
-                } else {
-                    Err("Invalid assignment.".to_string())
+    /// Parses an expression string into an Expression AST.
+    fn parse_expression(expr: &str) -> Result<Expression, String> {
+        let trimmed = expr.trim();
+        // Check if it is a literal.
+        if let Ok(num) = trimmed.parse::<i32>() {
+            return Ok(Expression::Literal(num));
+        }
+        // Check if it is a cell reference.
+        if let Some((r, c)) = Self::parse_cell_reference(trimmed) {
+            return Ok(Expression::Cell(r, c));
+        }
+        // Check for a binary operation.
+        for op in "+-*/".chars() {
+            if trimmed.contains(op) {
+                let parts: Vec<&str> = trimmed.split(op).collect();
+                if parts.len() != 2 {
+                    return Err("Invalid binary operation format.".to_string());
                 }
-            } else {
-                Err("Invalid target cell.".to_string())
+                let left_expr = Self::parse_expression(parts[0])?;
+                let right_expr = Self::parse_expression(parts[1])?;
+                return Ok(Expression::BinaryOp(Box::new(left_expr), op, Box::new(right_expr)));
             }
+        }
+        // Check for a function call. (E.g., MAX(A1:B9), SLEEP(3))
+        if let Some(open_paren) = trimmed.find('(') {
+            if trimmed.ends_with(')') {
+                let func_name = &trimmed[..open_paren];
+                let arg = &trimmed[open_paren + 1..trimmed.len() - 1];
+                return Ok(Expression::Function(func_name.to_uppercase(), arg.to_string()));
+            }
+        }
+        Err("Unrecognized expression.".to_string())
+    }
+
+    /// Evaluates an Expression AST, returning its integer value.
+    fn evaluate_expression(&self, expr: &Expression) -> Result<i32, String> {
+        match expr {
+            Expression::Literal(v) => Ok(*v),
+            Expression::Cell(r, c) => self.get_cell_value(*r, *c).ok_or("Invalid cell reference.".to_string()),
+            Expression::BinaryOp(lhs, op, rhs) => {
+                let left_val = self.evaluate_expression(lhs)?;
+                let right_val = self.evaluate_expression(rhs)?;
+                match op {
+                    '+' => Ok(left_val + right_val),
+                    '-' => Ok(left_val - right_val),
+                    '*' => Ok(left_val * right_val),
+                    '/' => {
+                        if right_val == 0 {
+                            Err("Division by zero.".to_string())
+                        } else {
+                            Ok(left_val / right_val)
+                        }
+                    }
+                    _ => Err("Unknown operator.".to_string()),
+                }
+            }
+            Expression::Function(name, arg) => {
+                // Stub implementations for future functions.
+                match name.as_str() {
+                    "SLEEP" => {
+                        // Placeholder: In the future, sleep for the given seconds.
+                        // Here we simply return 0.
+                        Ok(0)
+                    }
+                    "MAX" => Self::handle_max(arg),
+                    "MIN" => Self::handle_min(arg),
+                    "AVG" => Self::handle_avg(arg),
+                    "SUM" => Self::handle_sum(arg),
+                    "STDEV" => Self::handle_stdev(arg),
+                    _ => Err(format!("Unsupported function: {}", name)),
+                }
+            }
+        }
+    }
+
+    // Stub functions for range-based operations.
+    fn handle_max(_range: &str) -> Result<i32, String> {
+        // Future implementation: compute max over the given range.
+        Ok(0)
+    }
+    fn handle_min(_range: &str) -> Result<i32, String> {
+        // Future implementation: compute min over the given range.
+        Ok(0)
+    }
+    fn handle_avg(_range: &str) -> Result<i32, String> {
+        // Future implementation: compute average over the given range.
+        Ok(0)
+    }
+    fn handle_sum(_range: &str) -> Result<i32, String> {
+        // Future implementation: compute sum over the given range.
+        Ok(0)
+    }
+    fn handle_stdev(_range: &str) -> Result<i32, String> {
+        // Future implementation: compute standard deviation over the given range.
+        Ok(0)
+    }
+
+    /// Handles an assignment of the form "A1 = <expression>".
+    fn handle_assignment(&mut self, input: &str) -> Result<(), String> {
+        if let Some((left, right)) = input.split_once('=') {
+            let left = left.trim();
+            let expr_str = right.trim();
+            let (r, c) = Self::parse_cell_reference(left).ok_or("Invalid target cell.".to_string())?;
+            let parsed_expr = Self::parse_expression(expr_str)?;
+            let value = self.evaluate_expression(&parsed_expr)?;
+            self.update_cell(r, c, value);
+            Ok(())
         } else {
             Err("Assignment must contain '='.".to_string())
         }
     }
-    
+
+    /// Processes input that may be a command or an assignment.
+    fn process_input(&mut self, input: &str) -> Result<(), String> {
+        let trimmed = input.trim();
+        // Handle built-in commands.
+        match trimmed.to_lowercase().as_str() {
+            "disable_output" => {
+                self.output_enabled = false;
+                return Ok(());
+            }
+            "enable_output" => {
+                self.output_enabled = true;
+                return Ok(());
+            }
+            _ if trimmed.to_lowercase().starts_with("goto(") && trimmed.ends_with(')') => {
+                // Extract cell reference from goto command.
+                let cell_ref = &trimmed[5..trimmed.len() - 1];
+                // For now, we just print a message.
+                if Self::parse_cell_reference(cell_ref).is_some() {
+                    // In the future, you might update the view.
+                    return Ok(());
+                } else {
+                    return Err("Invalid cell reference in goto command.".to_string());
+                }
+            }
+            _ => {}
+        }
+        // Fallback: treat as an assignment.
+        self.handle_assignment(trimmed)
+    }
 
     fn scroll(&mut self, direction: &str) {
         match direction {
@@ -208,10 +301,10 @@ fn main() {
     loop {
         sheet.print_grid();
         print!("[0.0] ({}) > ", last_status);
-        std::io::stdout().flush().unwrap();
+        io::stdout().flush().unwrap();
 
         let mut input = String::new();
-        std::io::stdin().read_line(&mut input).unwrap();
+        io::stdin().read_line(&mut input).unwrap();
         let input = input.trim();
 
         if input == "q" {
@@ -220,7 +313,7 @@ fn main() {
             sheet.scroll(input);
             last_status = "ok".to_string();
         } else {
-            match sheet.handle_assignment(input) {
+            match sheet.process_input(input) {
                 Ok(_) => last_status = "ok".to_string(),
                 Err(e) => last_status = e,
             }
