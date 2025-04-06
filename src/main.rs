@@ -80,29 +80,29 @@ impl Spreadsheet {
         Some((row, col))
     }
 
-    fn handle_assignment(&mut self, input: &str) {
+    fn handle_assignment(&mut self, input: &str) -> Result<(), String> {
         if let Some((left, expr)) = input.split_once('=') {
             let left = left.trim();
             if let Some((target_row, target_col)) = Self::parse_cell_reference(left) {
                 let expr = expr.trim().replace(" ", "");
                 let operator = expr.chars().find(|c| "+-*/".contains(*c));
+    
+                let get_value = |s: &str| {
+                    if let Ok(val) = s.parse::<i32>() {
+                        Some(val)
+                    } else if let Some((r, c)) = Self::parse_cell_reference(s) {
+                        self.get_cell_value(r, c)
+                    } else {
+                        None
+                    }
+                };
+    
                 if let Some(op) = operator {
                     let parts: Vec<&str> = expr.split(op).collect();
                     if parts.len() != 2 {
-                        println!("Invalid expression format.");
-                        return;
+                        return Err("Invalid expression format.".to_string());
                     }
-
-                    let get_value = |s: &str| {
-                        if let Ok(val) = s.parse::<i32>() {
-                            Some(val)
-                        } else if let Some((r, c)) = Self::parse_cell_reference(s) {
-                            self.get_cell_value(r, c)
-                        } else {
-                            None
-                        }
-                    };
-
+    
                     if let (Some(val1), Some(val2)) = (get_value(parts[0]), get_value(parts[1])) {
                         let result = match op {
                             '+' => val1 + val2,
@@ -110,32 +110,39 @@ impl Spreadsheet {
                             '*' => val1 * val2,
                             '/' => {
                                 if val2 == 0 {
-                                    println!("Division by zero.");
-                                    return;
+                                    return Err("Division by zero.".to_string());
                                 } else {
                                     val1 / val2
                                 }
                             }
-                            _ => return,
+                            _ => return Err("Unsupported operator.".to_string()),
                         };
                         self.update_cell(target_row, target_col, result);
+                        Ok(())
                     } else {
-                        println!("Invalid values in expression.");
+                        Err("Invalid values in expression.".to_string())
                     }
                 } else if let Ok(val) = expr.parse::<i32>() {
                     self.update_cell(target_row, target_col, val);
+                    Ok(())
                 } else if let Some((r, c)) = Self::parse_cell_reference(&expr) {
                     if let Some(val) = self.get_cell_value(r, c) {
                         self.update_cell(target_row, target_col, val);
+                        Ok(())
                     } else {
-                        println!("Invalid cell reference.");
+                        Err("Invalid cell reference.".to_string())
                     }
                 } else {
-                    println!("Invalid assignment.");
+                    Err("Invalid assignment.".to_string())
                 }
+            } else {
+                Err("Invalid target cell.".to_string())
             }
+        } else {
+            Err("Assignment must contain '='.".to_string())
         }
     }
+    
 
     fn scroll(&mut self, direction: &str) {
         match direction {
@@ -196,11 +203,11 @@ fn main() {
     }
 
     let mut sheet = Spreadsheet::new(rows, cols);
+    let mut last_status = String::from("ok");
 
     loop {
         sheet.print_grid();
-        println!("\nUse WASD to scroll, 'q' to quit, or enter a formula like 'A1=7', 'B2=3+C3'");
-        print!("> ");
+        print!("[0.0] ({}) > ", last_status);
         std::io::stdout().flush().unwrap();
 
         let mut input = String::new();
@@ -211,8 +218,12 @@ fn main() {
             break;
         } else if ["w", "a", "s", "d"].contains(&input) {
             sheet.scroll(input);
+            last_status = "ok".to_string();
         } else {
-            sheet.handle_assignment(input);
+            match sheet.handle_assignment(input) {
+                Ok(_) => last_status = "ok".to_string(),
+                Err(e) => last_status = e,
+            }
         }
     }
 }
