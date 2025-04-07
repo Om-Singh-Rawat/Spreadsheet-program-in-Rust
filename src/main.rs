@@ -1,21 +1,19 @@
 use std::io::{self, Write};
 
-/// The AST for expressions.
 enum Expression {
     Literal(i32),
     Cell(usize, usize),
     BinaryOp(Box<Expression>, char, Box<Expression>),
-    Function(String, String), // e.g., Function("MAX", "B1:B9")
+    Function(String, String),
 }
 
-/// The Spreadsheet struct encapsulating the grid and view parameters.
 struct Spreadsheet {
     grid: Vec<Vec<i32>>,
     rows: usize,
     cols: usize,
     view_top: usize,
     view_left: usize,
-    output_enabled: bool, // for disable/enable output commands
+    output_enabled: bool,
 }
 
 impl Spreadsheet {
@@ -54,7 +52,6 @@ impl Spreadsheet {
     }
 
     fn print_grid(&self) {
-        // Only print if output is enabled.
         if !self.output_enabled {
             return;
         }
@@ -80,60 +77,109 @@ impl Spreadsheet {
     }
 
     fn get_cell_value(&self, row: usize, col: usize) -> Option<i32> {
-        if row < self.rows && col < self.cols {
-            Some(self.grid[row][col])
-        } else {
-            None
-        }
+        self.grid.get(row)?.get(col).copied()
     }
 
     fn parse_cell_reference(cell: &str) -> Option<(usize, usize)> {
         let split_index = cell.find(|c: char| c.is_ascii_digit())?;
         let (col_part, row_part) = cell.split_at(split_index);
+        if col_part.is_empty() {
+            return None;
+        }
         let col = Self::column_label_to_index(col_part)?;
-        let row = row_part.parse::<usize>().ok()? - 1;
-        Some((row, col))
+        let row_raw = row_part.parse::<usize>().ok()?;
+        if row_raw == 0 {
+            return None;
+        }
+        Some((row_raw - 1, col))
     }
 
-    /// Parses an expression string into an Expression AST.
+    fn parse_operand(operand: &str) -> Result<Expression, String> {
+        let operand = operand.trim();
+        
+        operand.parse::<i32>()
+            .map(Expression::Literal)
+            .or_else(|_| {
+                Self::parse_cell_reference(operand)
+                    .map(|(r, c)| Expression::Cell(r, c))
+                    .ok_or_else(|| {
+                        format!("'{}' is not a valid integer or cell reference", operand)
+                    })
+            })
+    }
+
     fn parse_expression(expr: &str) -> Result<Expression, String> {
         let trimmed = expr.trim();
-        // Check if it is a literal.
-        if let Ok(num) = trimmed.parse::<i32>() {
-            return Ok(Expression::Literal(num));
-        }
-        // Check if it is a cell reference.
-        if let Some((r, c)) = Self::parse_cell_reference(trimmed) {
-            return Ok(Expression::Cell(r, c));
-        }
-        // Check for a binary operation.
-        for op in "+-*/".chars() {
-            if trimmed.contains(op) {
-                let parts: Vec<&str> = trimmed.split(op).collect();
-                if parts.len() != 2 {
-                    return Err("invalid binary operation format".to_string());
-                }
-                let left_expr = Self::parse_expression(parts[0])?;
-                let right_expr = Self::parse_expression(parts[1])?;
-                return Ok(Expression::BinaryOp(Box::new(left_expr), op, Box::new(right_expr)));
-            }
-        }
-        // Check for a function call. (E.g., MAX(A1:B9), SLEEP(3))
+    
         if let Some(open_paren) = trimmed.find('(') {
             if trimmed.ends_with(')') {
-                let func_name = &trimmed[..open_paren];
-                let arg = &trimmed[open_paren + 1..trimmed.len() - 1];
-                return Ok(Expression::Function(func_name.to_uppercase(), arg.to_string()));
+                let func_name = trimmed[..open_paren].trim().to_uppercase();
+                let arg = trimmed[open_paren+1..trimmed.len()-1].trim().to_string();
+                return Ok(Expression::Function(func_name, arg));
             }
         }
-        Err("unrecognized expression".to_string())
+    
+        let operators = ['+', '-', '*', '/'];
+        let mut operator_pos = None;
+        let mut operator_count = 0;
+    
+        for (i, c) in trimmed.chars().enumerate() {
+            if operators.contains(&c) {
+                operator_count += 1;
+                operator_pos = Some((i, c));
+            }
+        }
+    
+        if operator_count == 1 {
+            let (op_pos, op_char) = operator_pos.unwrap();
+            let left = trimmed[..op_pos].trim();
+            let right = trimmed[op_pos + 1..].trim();
+    
+            if left.is_empty() || right.is_empty() {
+                return Err("Missing operand(s)".to_string());
+            }
+    
+            let left_expr = Self::parse_operand(left)?;
+            let right_expr = Self::parse_operand(right)?;
+    
+            return Ok(Expression::BinaryOp(
+                Box::new(left_expr),
+                op_char,
+                Box::new(right_expr),
+            ));
+        }
+    
+        if operator_count == 0 {
+            if let Ok(num) = trimmed.parse::<i32>() {
+                return Ok(Expression::Literal(num));
+            }
+    
+            if let Some((r, c)) = Self::parse_cell_reference(trimmed) {
+                return Ok(Expression::Cell(r, c));
+            }
+
+            if trimmed.is_empty() {
+                return Err("expression is empty".to_string());
+            }
+
+            return Err(format!("'{}' is not a valid expression", trimmed));
+        }
+    
+        Err(match operator_count {
+            0 => unreachable!(),
+            1 => unreachable!(),
+            _ => "Expressions can only contain one operator".to_string(),
+        })
     }
 
-    /// Evaluates an Expression AST, returning its integer value.
     fn evaluate_expression(&self, expr: &Expression) -> Result<i32, String> {
         match expr {
             Expression::Literal(v) => Ok(*v),
-            Expression::Cell(r, c) => self.get_cell_value(*r, *c).ok_or("invalid cell reference".to_string()),
+            Expression::Cell(r, c) => self.get_cell_value(*r, *c)
+                .ok_or_else(|| {
+                    let col_label = Self::column_index_to_label(*c);
+                    format!("Invalid cell reference {}{}", col_label, r + 1)
+                }),
             Expression::BinaryOp(lhs, op, rhs) => {
                 let left_val = self.evaluate_expression(lhs)?;
                 let right_val = self.evaluate_expression(rhs)?;
@@ -143,123 +189,87 @@ impl Spreadsheet {
                     '*' => Ok(left_val * right_val),
                     '/' => {
                         if right_val == 0 {
-                            Err("division by zero".to_string())
+                            Err("Division by zero".to_string())
                         } else {
                             Ok(left_val / right_val)
                         }
                     }
-                    _ => Err("unknown operator".to_string()),
+                    _ => Err("Unknown operator".to_string()),
                 }
             }
-            Expression::Function(name, arg) => {
-                // Stub implementations for future functions.
-                match name.as_str() {
-                    "SLEEP" => {
-                        // Placeholder: In the future, sleep for the given seconds.
-                        // Here we simply return 0.
-                        Ok(0)
-                    }
-                    "MAX" => Self::handle_max(arg),
-                    "MIN" => Self::handle_min(arg),
-                    "AVG" => Self::handle_avg(arg),
-                    "SUM" => Self::handle_sum(arg),
-                    "STDEV" => Self::handle_stdev(arg),
-                    _ => Err(format!("unsupported function: {}", name)),
-                }
-            }
+            Expression::Function(name, arg) => match name.as_str() {
+                "SLEEP" => self.handle_sleep(arg),
+                "MAX" => self.handle_max(arg),
+                "MIN" => self.handle_min(arg),
+                "AVG" => self.handle_avg(arg),
+                "SUM" => self.handle_sum(arg),
+                "STDEV" => self.handle_stdev(arg),
+                _ => Err(format!("Unknown function: {}", name)),
+            },
         }
     }
 
-    // Stub functions for range-based operations.
-    fn handle_max(_range: &str) -> Result<i32, String> {
-        // Future implementation: compute max over the given range.
-        Ok(0)
-    }
-    fn handle_min(_range: &str) -> Result<i32, String> {
-        // Future implementation: compute min over the given range.
-        Ok(0)
-    }
-    fn handle_avg(_range: &str) -> Result<i32, String> {
-        // Future implementation: compute average over the given range.
-        Ok(0)
-    }
-    fn handle_sum(_range: &str) -> Result<i32, String> {
-        // Future implementation: compute sum over the given range.
-        Ok(0)
-    }
-    fn handle_stdev(_range: &str) -> Result<i32, String> {
-        // Future implementation: compute standard deviation over the given range.
-        Ok(0)
+    // Function stubs
+    fn handle_sleep(&self, arg: &str) -> Result<i32, String> {
+        Err(format!("SLEEP({}) not implemented", arg))
     }
 
-    /// Handles an assignment of the form "A1 = <expression>".
+    fn handle_max(&self, arg: &str) -> Result<i32, String> {
+        Err(format!("MAX({}) not implemented", arg))
+    }
+
+    fn handle_min(&self, arg: &str) -> Result<i32, String> {
+        Err(format!("MIN({}) not implemented", arg))
+    }
+
+    fn handle_avg(&self, arg: &str) -> Result<i32, String> {
+        Err(format!("AVG({}) not implemented", arg))
+    }
+
+    fn handle_sum(&self, arg: &str) -> Result<i32, String> {
+        Err(format!("SUM({}) not implemented", arg))
+    }
+
+    fn handle_stdev(&self, arg: &str) -> Result<i32, String> {
+        Err(format!("STDEV({}) not implemented", arg))
+    }
+
     fn handle_assignment(&mut self, input: &str) -> Result<(), String> {
-        if let Some((left, right)) = input.split_once('=') {
-            let left = left.trim();
-            let expr_str = right.trim();
-            let (r, c) = Self::parse_cell_reference(left).ok_or("invalid target cell".to_string())?;
-            let parsed_expr = Self::parse_expression(expr_str)?;
-            let value = self.evaluate_expression(&parsed_expr)?;
-            self.update_cell(r, c, value);
-            Ok(())
-        } else {
-            Err("unrecognized cmd".to_string())
+        let parts: Vec<&str> = input.splitn(2, '=').collect();
+        if parts.len() != 2 {
+            return Err("unrecognized cmd".to_string());
         }
-    }
 
-    /// Processes input that may be a command or an assignment.
-    fn process_input(&mut self, input: &str) -> Result<(), String> {
-        let trimmed = input.trim();
-        // Handle built-in commands.
-        match trimmed.to_lowercase().as_str() {
-            "disable_output" => {
-                self.output_enabled = false;
-                return Ok(());
-            }
-            "enable_output" => {
-                self.output_enabled = true;
-                return Ok(());
-            }
-            _ => {}
+        let cell_ref = parts[0].trim();
+        let expr = parts[1].trim();
+
+        let (target_row, target_col) = Self::parse_cell_reference(cell_ref)
+            .ok_or_else(|| format!("Invalid cell format: '{}'", cell_ref))?;
+
+        if target_row >= self.rows || target_col >= self.cols {
+            return Err(format!(
+                "Target cell out of bounds"));
         }
-        // Fallback: treat as an assignment.
-        self.handle_assignment(trimmed)
+
+        let parsed_expr = Self::parse_expression(expr)?;
+        let value = self.evaluate_expression(&parsed_expr)?;
+
+        self.update_cell(target_row, target_col, value);
+        Ok(())
     }
 
     fn scroll(&mut self, direction: &str) {
         match direction {
-            "w" => {
-                if self.view_top >= 10 {
-                    self.view_top -= 10;
-                } else {
-                    self.view_top = 0;
-                }
-            }
-            "s" => {
-                if self.view_top + 10 < self.rows {
-                    let remaining = self.rows - self.view_top - 10;
-                    self.view_top += remaining.min(10);
-                }
-            }
-            "a" => {
-                if self.view_left >= 10 {
-                    self.view_left -= 10;
-                } else {
-                    self.view_left = 0;
-                }
-            }
-            "d" => {
-                if self.view_left + 10 < self.cols {
-                    let remaining = self.cols - self.view_left - 10;
-                    self.view_left += remaining.min(10);
-                }
-            }
-            _ => {}
+            "w" => self.view_top = self.view_top.saturating_sub(10),
+            "s" => self.view_top = (self.view_top + 10).min(self.rows.saturating_sub(10)),
+            "a" => self.view_left = self.view_left.saturating_sub(10),
+            "d" => self.view_left = (self.view_left + 10).min(self.cols.saturating_sub(10)),
+            _ => (),
         }
     }
 
     fn handle_scroll_to(&mut self, input: &str) -> Result<(), String> {
-        let parts: Vec<&str> = input.trim().split_whitespace().collect();
+        let parts: Vec<&str> = input.split_whitespace().collect();
         if parts.len() != 2 {
             return Err("Usage: scroll_to <cell>".to_string());
         }
@@ -276,8 +286,27 @@ impl Spreadsheet {
             Err("invalid cell reference in scroll_to".to_string())
         }
     }
-    
-    
+
+    fn process_input(&mut self, input: &str) -> Result<(), String> {
+        let trimmed = input.trim().to_lowercase();
+        match trimmed.as_str() {
+            "disable_output" => {
+                self.output_enabled = false;
+                Ok(())
+            }
+            "enable_output" => {
+                self.output_enabled = true;
+                Ok(())
+            }
+            _ => {
+                if trimmed.starts_with("scroll_to") {
+                    self.handle_scroll_to(input)
+                } else {
+                    self.handle_assignment(input)
+                }
+            }
+        }
+    }
 }
 
 fn main() {
@@ -290,18 +319,8 @@ fn main() {
     let rows = args[1].parse::<usize>().unwrap_or(0);
     let cols = args[2].parse::<usize>().unwrap_or(0);
 
-    if rows == 0 || cols == 0 {
-        println!("Rows and columns must be > 0");
-        return;
-    }
-
-    if rows > 999 {
-        println!("Maximum rows: 999");
-        return;
-    }
-
-    if cols > 18278 {
-        println!("Maximum columns: 18278 (up to ZZZ)");
+    if rows == 0 || cols == 0 || rows > 999 || cols > 18278 {
+        println!("Invalid grid size. Max rows: 999, Max cols: 18278");
         return;
     }
 
@@ -317,26 +336,21 @@ fn main() {
         io::stdin().read_line(&mut input).unwrap();
         let input = input.trim();
 
+        if input.is_empty() {
+            last_status = "ok".to_string();
+            continue;
+        }
+
         if input == "q" {
             break;
         } else if ["w", "a", "s", "d"].contains(&input) {
             sheet.scroll(input);
             last_status = "ok".to_string();
-        } else if input.trim_start().starts_with("scroll_to") {
-            match sheet.handle_scroll_to(input) {
-                Ok(_) => last_status = "ok".to_string(),
-                Err(e) => last_status = e,
-            }
         } else {
-            match sheet.process_input(input) {        
+            match sheet.process_input(input) {
                 Ok(_) => last_status = "ok".to_string(),
                 Err(e) => last_status = e,
             }
         }
     }
 }
-
-
-
-
-//scroll_to <some out of bounds cell> earlier just scrolled to the last cell(row wise and/or column wise) in the sheet. now it gives out of bounds error
