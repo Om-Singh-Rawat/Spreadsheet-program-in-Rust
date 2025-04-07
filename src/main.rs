@@ -111,7 +111,7 @@ impl Spreadsheet {
             if trimmed.contains(op) {
                 let parts: Vec<&str> = trimmed.split(op).collect();
                 if parts.len() != 2 {
-                    return Err("Invalid binary operation format.".to_string());
+                    return Err("invalid binary operation format".to_string());
                 }
                 let left_expr = Self::parse_expression(parts[0])?;
                 let right_expr = Self::parse_expression(parts[1])?;
@@ -126,14 +126,14 @@ impl Spreadsheet {
                 return Ok(Expression::Function(func_name.to_uppercase(), arg.to_string()));
             }
         }
-        Err("Unrecognized expression.".to_string())
+        Err("unrecognized expression".to_string())
     }
 
     /// Evaluates an Expression AST, returning its integer value.
     fn evaluate_expression(&self, expr: &Expression) -> Result<i32, String> {
         match expr {
             Expression::Literal(v) => Ok(*v),
-            Expression::Cell(r, c) => self.get_cell_value(*r, *c).ok_or("Invalid cell reference.".to_string()),
+            Expression::Cell(r, c) => self.get_cell_value(*r, *c).ok_or("invalid cell reference".to_string()),
             Expression::BinaryOp(lhs, op, rhs) => {
                 let left_val = self.evaluate_expression(lhs)?;
                 let right_val = self.evaluate_expression(rhs)?;
@@ -143,12 +143,12 @@ impl Spreadsheet {
                     '*' => Ok(left_val * right_val),
                     '/' => {
                         if right_val == 0 {
-                            Err("Division by zero.".to_string())
+                            Err("division by zero".to_string())
                         } else {
                             Ok(left_val / right_val)
                         }
                     }
-                    _ => Err("Unknown operator.".to_string()),
+                    _ => Err("unknown operator".to_string()),
                 }
             }
             Expression::Function(name, arg) => {
@@ -164,7 +164,7 @@ impl Spreadsheet {
                     "AVG" => Self::handle_avg(arg),
                     "SUM" => Self::handle_sum(arg),
                     "STDEV" => Self::handle_stdev(arg),
-                    _ => Err(format!("Unsupported function: {}", name)),
+                    _ => Err(format!("unsupported function: {}", name)),
                 }
             }
         }
@@ -197,13 +197,13 @@ impl Spreadsheet {
         if let Some((left, right)) = input.split_once('=') {
             let left = left.trim();
             let expr_str = right.trim();
-            let (r, c) = Self::parse_cell_reference(left).ok_or("Invalid target cell.".to_string())?;
+            let (r, c) = Self::parse_cell_reference(left).ok_or("invalid target cell".to_string())?;
             let parsed_expr = Self::parse_expression(expr_str)?;
             let value = self.evaluate_expression(&parsed_expr)?;
             self.update_cell(r, c, value);
             Ok(())
         } else {
-            Err("Assignment must contain '='.".to_string())
+            Err("unrecognized cmd".to_string())
         }
     }
 
@@ -219,17 +219,6 @@ impl Spreadsheet {
             "enable_output" => {
                 self.output_enabled = true;
                 return Ok(());
-            }
-            _ if trimmed.to_lowercase().starts_with("goto(") && trimmed.ends_with(')') => {
-                // Extract cell reference from goto command.
-                let cell_ref = &trimmed[5..trimmed.len() - 1];
-                // For now, we just print a message.
-                if Self::parse_cell_reference(cell_ref).is_some() {
-                    // In the future, you might update the view.
-                    return Ok(());
-                } else {
-                    return Err("Invalid cell reference in goto command.".to_string());
-                }
             }
             _ => {}
         }
@@ -268,6 +257,22 @@ impl Spreadsheet {
             _ => {}
         }
     }
+
+    fn handle_scroll_to(&mut self, input: &str) -> Result<(), String> {
+        let parts: Vec<&str> = input.trim().split_whitespace().collect();
+        if parts.len() != 2 {
+            return Err("Usage: scroll_to <cell>".to_string());
+        }
+    
+        if let Some((row, col)) = Self::parse_cell_reference(parts[1]) {
+            self.view_top = row.min(self.rows - 1);
+            self.view_left = col.min(self.cols - 1);
+            Ok(())
+        } else {
+            Err("invalid cell reference in scroll_to".to_string())
+        }
+    }
+    
 }
 
 fn main() {
@@ -281,7 +286,7 @@ fn main() {
     let cols = args[2].parse::<usize>().unwrap_or(0);
 
     if rows == 0 || cols == 0 {
-        println!("Rows and columns must be > 0.");
+        println!("Rows and columns must be > 0");
         return;
     }
 
@@ -312,11 +317,21 @@ fn main() {
         } else if ["w", "a", "s", "d"].contains(&input) {
             sheet.scroll(input);
             last_status = "ok".to_string();
+        } else if input.trim_start().starts_with("scroll_to") {
+            match sheet.handle_scroll_to(input) {
+                Ok(_) => last_status = "ok".to_string(),
+                Err(e) => last_status = e,
+            }
         } else {
-            match sheet.process_input(input) {
+            match sheet.process_input(input) {        
                 Ok(_) => last_status = "ok".to_string(),
                 Err(e) => last_status = e,
             }
         }
     }
 }
+
+
+
+
+//changed the goto(<cell>) function to scroll_to <cell>. also corrected some errors.
