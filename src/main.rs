@@ -265,13 +265,18 @@ impl Spreadsheet {
         }
     
         if let Some((row, col)) = Self::parse_cell_reference(parts[1]) {
-            self.view_top = row.min(self.rows - 1);
-            self.view_left = col.min(self.cols - 1);
+            if row >= self.rows || col >= self.cols {
+                return Err("scroll_to: cell out of bounds".to_string());
+            }
+    
+            self.view_top = row;
+            self.view_left = col;
             Ok(())
         } else {
             Err("invalid cell reference in scroll_to".to_string())
         }
     }
+    
     
 }
 
@@ -334,4 +339,4 @@ fn main() {
 
 
 
-//changed the goto(<cell>) function to scroll_to <cell>. also corrected some errors.
+//scroll_to <some out of bounds cell> earlier just scrolled to the last cell(row wise and/or column wise) in the sheet. now it gives out of bounds error
