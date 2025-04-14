@@ -173,7 +173,7 @@ impl Spreadsheet {
             return Err(format!("'{}' is not a valid expression", trimmed));
         }
 
-        Err("Expressions can only contain one operator".to_string())
+        Err("expressions can only contain one operator".to_string())
     }
 
     fn evaluate_expression(&self, expr: &Expression) -> Result<i32, String> {
@@ -198,7 +198,7 @@ impl Spreadsheet {
                             Ok(left_val / right_val)
                         }
                     }
-                    _ => Err("Unknown operator".to_string()),
+                    _ => Err("unknown operator".to_string()),
                 }
             }
             Expression::Function(name, arg) => match name.as_str() {
@@ -208,7 +208,7 @@ impl Spreadsheet {
                 "AVG" => self.handle_avg(arg),
                 "SUM" => self.handle_sum(arg),
                 "STDEV" => self.handle_stdev(arg),
-                _ => Err(format!("Unknown function: {}", name)),
+                _ => Err(format!("unknown function: {}", name)),
             },
         }
     }
@@ -270,35 +270,81 @@ impl Spreadsheet {
         Ok(())
     }
 
+    fn detect_cycle(&self, start: (usize, usize), new_deps: &HashSet<(usize, usize)>) -> bool {
+        let mut visited = HashSet::new();
+        let mut stack = HashSet::new();
+    
+        fn dfs(
+            node: (usize, usize),
+            dependencies: &HashMap<(usize, usize), HashSet<(usize, usize)>>,
+            visited: &mut HashSet<(usize, usize)>,
+            stack: &mut HashSet<(usize, usize)>,
+        ) -> bool {
+            if stack.contains(&node) {
+                return true;
+            }
+            if visited.contains(&node) {
+                return false;
+            }
+    
+            visited.insert(node);
+            stack.insert(node);
+    
+            if let Some(neighbors) = dependencies.get(&node) {
+                for &neighbor in neighbors {
+                    if dfs(neighbor, dependencies, visited, stack) {
+                        return true;
+                    }
+                }
+            }
+    
+            stack.remove(&node);
+            false
+        }
+    
+        // Clone the current dependencies
+        let mut simulated = self.dependencies.clone();
+        simulated.insert(start, new_deps.clone());
+    
+        dfs(start, &simulated, &mut visited, &mut stack)
+    }
+
     fn handle_assignment(&mut self, input: &str) -> Result<(), String> {
         let parts: Vec<&str> = input.splitn(2, '=').collect();
         if parts.len() != 2 {
             return Err("unrecognized cmd".to_string());
         }
-
+    
         let cell_ref = parts[0].trim();
         let expr = parts[1].trim();
-
+    
         let (target_row, target_col) = Self::parse_cell_reference(cell_ref)
-            .ok_or_else(|| format!("invalid cell format: '{}'", cell_ref))?;
-
+            .ok_or_else(|| format!("invalid cell format: {}", cell_ref))?;
+    
         if target_row >= self.rows || target_col >= self.cols {
             return Err(format!("target cell out of bounds"));
         }
-
+    
         let parsed_expr = Self::parse_expression(expr)?;
-
+    
+        // --- Cycle detection before committing ---
+        let new_deps = Spreadsheet::extract_dependencies(&parsed_expr);
+        if self.detect_cycle((target_row, target_col), &new_deps) {
+            return Err("cycle detected".to_string());
+        }
+    
+        // Safe to proceed
         self.cell_expressions.insert((target_row, target_col), parsed_expr.clone());
         self.update_dependencies((target_row, target_col), &parsed_expr)?;
-
+    
         let value = self.evaluate_expression(&parsed_expr)?;
         self.update_cell(target_row, target_col, value);
-
+    
         self.recalculate_dependents((target_row, target_col))?;
-
+    
         Ok(())
     }
-
+    
     // Function stubs
     fn handle_sleep(&self, arg: &str) -> Result<i32, String> {
         Err(format!("SLEEP({}) not implemented", arg))
