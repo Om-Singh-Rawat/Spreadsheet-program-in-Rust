@@ -1,5 +1,7 @@
+use std::collections::{HashMap, HashSet};
 use std::io::{self, Write};
 
+#[derive(Clone)]
 enum Expression {
     Literal(i32),
     Cell(usize, usize),
@@ -14,6 +16,9 @@ struct Spreadsheet {
     view_top: usize,
     view_left: usize,
     output_enabled: bool,
+    cell_expressions: HashMap<(usize, usize), Expression>,
+    dependencies: HashMap<(usize, usize), HashSet<(usize, usize)>>, // forward edges: A -> [B, C]
+    reverse_dependencies: HashMap<(usize, usize), HashSet<(usize, usize)>>, // reverse edges: B -> [A]
 }
 
 impl Spreadsheet {
@@ -26,6 +31,9 @@ impl Spreadsheet {
             view_top: 0,
             view_left: 0,
             output_enabled: true,
+            cell_expressions: HashMap::new(),
+            dependencies: HashMap::new(),
+            reverse_dependencies: HashMap::new(),
         }
     }
 
@@ -96,7 +104,7 @@ impl Spreadsheet {
 
     fn parse_operand(operand: &str) -> Result<Expression, String> {
         let operand = operand.trim();
-        
+
         operand.parse::<i32>()
             .map(Expression::Literal)
             .or_else(|_| {
@@ -110,7 +118,7 @@ impl Spreadsheet {
 
     fn parse_expression(expr: &str) -> Result<Expression, String> {
         let trimmed = expr.trim();
-    
+
         if let Some(open_paren) = trimmed.find('(') {
             if trimmed.ends_with(')') {
                 let func_name = trimmed[..open_paren].trim().to_uppercase();
@@ -118,42 +126,42 @@ impl Spreadsheet {
                 return Ok(Expression::Function(func_name, arg));
             }
         }
-    
+
         let operators = ['+', '-', '*', '/'];
         let mut operator_pos = None;
         let mut operator_count = 0;
-    
+
         for (i, c) in trimmed.chars().enumerate() {
             if operators.contains(&c) {
                 operator_count += 1;
                 operator_pos = Some((i, c));
             }
         }
-    
+
         if operator_count == 1 {
             let (op_pos, op_char) = operator_pos.unwrap();
             let left = trimmed[..op_pos].trim();
             let right = trimmed[op_pos + 1..].trim();
-    
+
             if left.is_empty() || right.is_empty() {
                 return Err("Missing operand(s)".to_string());
             }
-    
+
             let left_expr = Self::parse_operand(left)?;
             let right_expr = Self::parse_operand(right)?;
-    
+
             return Ok(Expression::BinaryOp(
                 Box::new(left_expr),
                 op_char,
                 Box::new(right_expr),
             ));
         }
-    
+
         if operator_count == 0 {
             if let Ok(num) = trimmed.parse::<i32>() {
                 return Ok(Expression::Literal(num));
             }
-    
+
             if let Some((r, c)) = Self::parse_cell_reference(trimmed) {
                 return Ok(Expression::Cell(r, c));
             }
@@ -164,12 +172,8 @@ impl Spreadsheet {
 
             return Err(format!("'{}' is not a valid expression", trimmed));
         }
-    
-        Err(match operator_count {
-            0 => unreachable!(),
-            1 => unreachable!(),
-            _ => "Expressions can only contain one operator".to_string(),
-        })
+
+        Err("Expressions can only contain one operator".to_string())
     }
 
     fn evaluate_expression(&self, expr: &Expression) -> Result<i32, String> {
@@ -209,29 +213,61 @@ impl Spreadsheet {
         }
     }
 
-    // Function stubs
-    fn handle_sleep(&self, arg: &str) -> Result<i32, String> {
-        Err(format!("SLEEP({}) not implemented", arg))
+    fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
+        let mut deps = HashSet::new();
+        fn recurse(expr: &Expression, deps: &mut HashSet<(usize, usize)>) {
+            match expr {
+                Expression::Cell(r, c) => {
+                    deps.insert((*r, *c));
+                }
+                Expression::BinaryOp(lhs, _, rhs) => {
+                    recurse(lhs, deps);
+                    recurse(rhs, deps);
+                }
+                _ => {}
+            }
+        }
+        recurse(expr, &mut deps);
+        deps
     }
 
-    fn handle_max(&self, arg: &str) -> Result<i32, String> {
-        Err(format!("MAX({}) not implemented", arg))
+    fn update_dependencies(&mut self, cell: (usize, usize), expr: &Expression) -> Result<(), String> {
+        // Remove old reverse dependencies
+        if let Some(old_deps) = self.dependencies.get(&cell) {
+            for dep in old_deps {
+                if let Some(set) = self.reverse_dependencies.get_mut(dep) {
+                    set.remove(&cell);
+                }
+            }
+        }
+
+        let new_deps = Self::extract_dependencies(expr);
+        for dep in &new_deps {
+            self.reverse_dependencies.entry(*dep).or_default().insert(cell);
+        }
+
+        self.dependencies.insert(cell, new_deps);
+        Ok(())
     }
 
-    fn handle_min(&self, arg: &str) -> Result<i32, String> {
-        Err(format!("MIN({}) not implemented", arg))
-    }
+    fn recalculate_dependents(&mut self, cell: (usize, usize)) -> Result<(), String> {
+        let mut visited = HashSet::new();
+        let mut stack = vec![cell];
 
-    fn handle_avg(&self, arg: &str) -> Result<i32, String> {
-        Err(format!("AVG({}) not implemented", arg))
-    }
-
-    fn handle_sum(&self, arg: &str) -> Result<i32, String> {
-        Err(format!("SUM({}) not implemented", arg))
-    }
-
-    fn handle_stdev(&self, arg: &str) -> Result<i32, String> {
-        Err(format!("STDEV({}) not implemented", arg))
+        while let Some(current) = stack.pop() {
+            if let Some(dependents) = self.reverse_dependencies.get(&current) {
+                for &dep in dependents {
+                    if visited.insert(dep) {
+                        stack.push(dep);
+                    }
+                }
+            }
+            if let Some(expr) = self.cell_expressions.get(&current) {
+                let val = self.evaluate_expression(expr)?;
+                self.update_cell(current.0, current.1, val);
+            }
+        }
+        Ok(())
     }
 
     fn handle_assignment(&mut self, input: &str) -> Result<(), String> {
@@ -244,18 +280,43 @@ impl Spreadsheet {
         let expr = parts[1].trim();
 
         let (target_row, target_col) = Self::parse_cell_reference(cell_ref)
-            .ok_or_else(|| format!("Invalid cell format: '{}'", cell_ref))?;
+            .ok_or_else(|| format!("invalid cell format: '{}'", cell_ref))?;
 
         if target_row >= self.rows || target_col >= self.cols {
-            return Err(format!(
-                "Target cell out of bounds"));
+            return Err(format!("target cell out of bounds"));
         }
 
         let parsed_expr = Self::parse_expression(expr)?;
-        let value = self.evaluate_expression(&parsed_expr)?;
 
+        self.cell_expressions.insert((target_row, target_col), parsed_expr.clone());
+        self.update_dependencies((target_row, target_col), &parsed_expr)?;
+
+        let value = self.evaluate_expression(&parsed_expr)?;
         self.update_cell(target_row, target_col, value);
+
+        self.recalculate_dependents((target_row, target_col))?;
+
         Ok(())
+    }
+
+    // Function stubs
+    fn handle_sleep(&self, arg: &str) -> Result<i32, String> {
+        Err(format!("SLEEP({}) not implemented", arg))
+    }
+    fn handle_max(&self, arg: &str) -> Result<i32, String> {
+        Err(format!("MAX({}) not implemented", arg))
+    }
+    fn handle_min(&self, arg: &str) -> Result<i32, String> {
+        Err(format!("MIN({}) not implemented", arg))
+    }
+    fn handle_avg(&self, arg: &str) -> Result<i32, String> {
+        Err(format!("AVG({}) not implemented", arg))
+    }
+    fn handle_sum(&self, arg: &str) -> Result<i32, String> {
+        Err(format!("SUM({}) not implemented", arg))
+    }
+    fn handle_stdev(&self, arg: &str) -> Result<i32, String> {
+        Err(format!("STDEV({}) not implemented", arg))
     }
 
     fn scroll(&mut self, direction: &str) {
@@ -273,12 +334,12 @@ impl Spreadsheet {
         if parts.len() != 2 {
             return Err("Usage: scroll_to <cell>".to_string());
         }
-    
+
         if let Some((row, col)) = Self::parse_cell_reference(parts[1]) {
             if row >= self.rows || col >= self.cols {
                 return Err("scroll_to: cell out of bounds".to_string());
             }
-    
+
             self.view_top = row;
             self.view_left = col;
             Ok(())
@@ -354,3 +415,4 @@ fn main() {
         }
     }
 }
+
