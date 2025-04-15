@@ -9,6 +9,14 @@ enum Expression {
     Function(String, String),
 }
 
+enum FunctionArg {
+    Range((usize, usize), (usize, usize)), // ((row1, col1), (row2, col2))
+    #[allow(dead_code)]
+    Cell(usize, usize),                    // (row, col)
+    #[allow(dead_code)]
+    Literal(i32),
+}
+
 struct Spreadsheet {
     grid: Vec<Vec<i32>>,
     rows: usize,
@@ -184,26 +192,47 @@ impl Spreadsheet {
     // --- Dependency Methods ---
 
     // Extract all cell references (dependencies) from an expression.
-    fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
-        let mut deps = HashSet::new();
-        fn recurse(expr: &Expression, deps: &mut HashSet<(usize, usize)>) {
-            match expr {
-                Expression::Cell(r, c) => { deps.insert((*r, *c)); }
-                Expression::BinaryOp(left, _, right) => {
-                    recurse(left, deps);
-                    recurse(right, deps);
-                }
-                // You can later extend this for functions with ranges.
-                _ => {}
+fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
+    let mut deps = HashSet::new();
+
+    fn recurse(expr: &Expression, deps: &mut HashSet<(usize, usize)>) {
+        match expr {
+            Expression::Cell(r, c) => {
+                deps.insert((*r, *c));
             }
+            Expression::BinaryOp(left, _, right) => {
+                recurse(left, deps);
+                recurse(right, deps);
+            }
+            Expression::Function(name, arg) => {
+                if name == "SUM" {
+                    match Spreadsheet::parse_function_argument(arg) {
+                        Ok(FunctionArg::Range((r1, c1), (r2, c2))) => {
+                            for row in r1.min(r2)..=r1.max(r2) {
+                                for col in c1.min(c2)..=c1.max(c2) {
+                                    deps.insert((row, col));
+                                }
+                            }
+                        }
+                        _ => {
+                            // Invalid SUM argument: do nothing or handle as needed
+                        }
+                    }
+                }
+                // Other functions can be added similarly here if they depend on cells/ranges.
+            }
+            _ => {}
         }
-        recurse(expr, &mut deps);
-        deps
     }
+
+    recurse(expr, &mut deps);
+    deps
+}
+
 
     // Update dependencies (forward and reverse) for a given cell.
     fn update_dependencies(&mut self, cell: (usize, usize), expr: &Expression) -> Result<(), String> {
-        // Remove old dependencies for 'cell'
+        // Remove old reverse dependencies for this cell
         if let Some(old_deps) = self.dependencies.get(&cell) {
             for dep in old_deps {
                 if let Some(set) = self.reverse_dependencies.get_mut(dep) {
@@ -211,7 +240,8 @@ impl Spreadsheet {
                 }
             }
         }
-
+    
+        // Extract and store new dependencies
         let new_deps = Self::extract_dependencies(expr);
         for dep in &new_deps {
             self.reverse_dependencies.entry(*dep).or_default().insert(cell);
@@ -350,6 +380,36 @@ impl Spreadsheet {
         }
     }
 
+    fn parse_function_argument(arg: &str) -> Result<FunctionArg, String> {
+        let trimmed = arg.trim();
+    
+        // Case 1: Range like A1:B5
+        if let Some(colon_pos) = trimmed.find(':') {
+            let (start, end) = trimmed.split_at(colon_pos);
+            let end = &end[1..]; // Skip the ':'
+    
+            let start_pos = Spreadsheet::parse_cell_reference(start)
+                .ok_or_else(|| format!("Invalid start cell: {}", start))?;
+            let end_pos = Spreadsheet::parse_cell_reference(end)
+                .ok_or_else(|| format!("Invalid end cell: {}", end))?;
+    
+            return Ok(FunctionArg::Range(start_pos, end_pos));
+        }
+    
+        // Case 2: Try parsing as a single cell
+        if let Some((row, col)) = Spreadsheet::parse_cell_reference(trimmed) {
+            return Ok(FunctionArg::Cell(row, col));
+        }
+    
+        // Case 3: Try parsing as integer
+        if let Ok(val) = trimmed.parse::<i32>() {
+            return Ok(FunctionArg::Literal(val));
+        }
+    
+        // If none match
+        Err(format!("Invalid function argument: {}", trimmed))
+    }
+    
     // --- Function stubs ---
     fn handle_sleep(&self, arg: &str) -> Result<i32, String> {
         Err(format!("SLEEP({}) not implemented", arg))
@@ -363,9 +423,29 @@ impl Spreadsheet {
     fn handle_avg(&self, arg: &str) -> Result<i32, String> {
         Err(format!("AVG({}) not implemented", arg))
     }
+
     fn handle_sum(&self, arg: &str) -> Result<i32, String> {
-        Err(format!("SUM({}) not implemented", arg))
+        match Self::parse_function_argument(arg)? {
+            FunctionArg::Range((start_row, start_col), (end_row, end_col)) => {
+                let mut sum = 0;
+    
+                for row in start_row.min(end_row)..=start_row.max(end_row) {
+                    for col in start_col.min(end_col)..=start_col.max(end_col) {
+                        if let Some(value) = self.get_cell_value(row, col) {
+                            sum += value;
+                        } else {
+                            let cell_label = format!("{}{}", Self::column_index_to_label(col), row + 1);
+                            return Err(format!("invalid cell in range: {}", cell_label));
+                        }
+                    }
+                }
+    
+                Ok(sum)
+            }
+            _ => Err("SUM expects a range argument like A1:B5".to_string()),
+        }
     }
+    
     fn handle_stdev(&self, arg: &str) -> Result<i32, String> {
         Err(format!("STDEV({}) not implemented", arg))
     }
