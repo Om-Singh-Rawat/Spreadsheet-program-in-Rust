@@ -1,24 +1,21 @@
 # Makefile for the Rust Spreadsheet Project
 
-# Executable name
-EXEC = sheet
-
-# Report file
+# Report files
 REPORT_SRC = report/report.tex
 REPORT_PDF = report/report.pdf
 
-# Default target: build the release binary and create ./sheet
+# Default target: build the release binary
 all: build
 
+# Build the release binary (output stays in target/release/)
 build:
 	cargo build --release
-	cp target/release/spreadsheet $(EXEC)
 
-# Run tests (currently works even if tests are empty)
+# Run tests from the tests/ folder
 test:
 	cargo test
 
-# Compile the LaTeX report to PDF
+# Generate the PDF report from LaTeX
 report: $(REPORT_PDF)
 
 $(REPORT_PDF): $(REPORT_SRC)
@@ -27,5 +24,4 @@ $(REPORT_PDF): $(REPORT_SRC)
 # Clean build artifacts and generated files
 clean:
 	cargo clean
-	rm -f $(EXEC)
 	rm -f report/*.aux report/*.log report/*.pdf
