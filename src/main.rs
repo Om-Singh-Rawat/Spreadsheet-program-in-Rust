@@ -131,62 +131,105 @@ impl Spreadsheet {
 
     fn parse_expression(expr: &str) -> Result<Expression, String> {
         let trimmed = expr.trim();
-
+    
         if let Some(open_paren) = trimmed.find('(') {
-            if trimmed.ends_with(')') {
-                let func_name = trimmed[..open_paren].trim().to_uppercase();
-                let arg = trimmed[open_paren+1..trimmed.len()-1].trim().to_string();
-                return Ok(Expression::Function(func_name, arg));
+            // Basic function structure checks
+            if !trimmed.ends_with(')') {
+                return Err("invalid function declaration".to_string());
             }
+    
+            // Extract function name
+            let func_name = trimmed[..open_paren].trim();
+            if func_name.is_empty() {
+                return Err("empty function name".to_string());
+            }
+    
+            // Validate function name characters
+            if !func_name.chars().all(|c| c.is_ascii_alphabetic()) {
+                return Err(format!("invalid function name: '{}'", func_name));
+            }
+    
+            let func_name_upper = func_name.to_uppercase();
+    
+            // Check supported functions
+            let supported = ["SUM", "AVG", "MIN", "MAX", "STDEV", "SLEEP"];
+            if !supported.contains(&func_name_upper.as_str()) {
+                return Err(format!("unknown function: '{}'", func_name_upper));
+            }
+    
+            // Extract argument (everything between first '(' and last ')')
+            let arg = trimmed[open_paren+1..trimmed.len()-1].trim();
+    
+            // Parse argument - let downstream functions handle validation
+            let func_arg = Self::parse_function_argument(arg)?;
+    
+            // Function-specific validation
+            match func_name_upper.as_str() {
+                "SUM" | "AVG" | "MIN" | "MAX" | "STDEV" => {
+                    if !matches!(func_arg, FunctionArg::Range(..)) {
+                        return Err(format!("{} requires a range", func_name_upper));
+                    }
+                }
+                "SLEEP" => {
+                    if !matches!(func_arg, FunctionArg::Cell(..) | FunctionArg::Literal(..)) {
+                        return Err("SLEEP requires a cell reference or integer".to_string());
+                    }
+                }
+                _ => unreachable!() // Already checked against supported functions
+            }
+    
+            Ok(Expression::Function(func_name_upper, arg.to_string()))
+        
+        } else {
+
+            let operators = ['+', '-', '*', '/'];
+            let mut operator_pos = None;
+            let mut operator_count = 0;
+    
+            for (i, c) in trimmed.chars().enumerate() {
+                if operators.contains(&c) {
+                    operator_count += 1;
+                    operator_pos = Some((i, c));
+                }
+            }
+    
+            if operator_count == 1 {
+                let (op_pos, op_char) = operator_pos.unwrap();
+                let left = trimmed[..op_pos].trim();
+                let right = trimmed[op_pos + 1..].trim();
+    
+                if left.is_empty() || right.is_empty() {
+                    return Err("missing operand(s)".to_string());
+                }
+    
+                let left_expr = Self::parse_operand(left)?;
+                let right_expr = Self::parse_operand(right)?;
+    
+                return Ok(Expression::BinaryOp(
+                    Box::new(left_expr),
+                    op_char,
+                    Box::new(right_expr),
+                ));
+            }
+    
+            if operator_count == 0 {
+                if let Ok(num) = trimmed.parse::<i32>() {
+                    return Ok(Expression::Literal(num));
+                }
+    
+                if let Some((r, c)) = Self::parse_cell_reference(trimmed) {
+                    return Ok(Expression::Cell(r, c));
+                }
+    
+                if trimmed.is_empty() {
+                    return Err("expression is empty".to_string());
+                }
+    
+                return Err(format!("'{}' is not a valid expression", trimmed));
+            }
+    
+            Err("expressions can only contain one operator".to_string())
         }
-
-        let operators = ['+', '-', '*', '/'];
-        let mut operator_pos = None;
-        let mut operator_count = 0;
-
-        for (i, c) in trimmed.chars().enumerate() {
-            if operators.contains(&c) {
-                operator_count += 1;
-                operator_pos = Some((i, c));
-            }
-        }
-
-        if operator_count == 1 {
-            let (op_pos, op_char) = operator_pos.unwrap();
-            let left = trimmed[..op_pos].trim();
-            let right = trimmed[op_pos + 1..].trim();
-
-            if left.is_empty() || right.is_empty() {
-                return Err("missing operand(s)".to_string());
-            }
-
-            let left_expr = Self::parse_operand(left)?;
-            let right_expr = Self::parse_operand(right)?;
-
-            return Ok(Expression::BinaryOp(
-                Box::new(left_expr),
-                op_char,
-                Box::new(right_expr),
-            ));
-        }
-
-        if operator_count == 0 {
-            if let Ok(num) = trimmed.parse::<i32>() {
-                return Ok(Expression::Literal(num));
-            }
-
-            if let Some((r, c)) = Self::parse_cell_reference(trimmed) {
-                return Ok(Expression::Cell(r, c));
-            }
-
-            if trimmed.is_empty() {
-                return Err("expression is empty".to_string());
-            }
-
-            return Err(format!("'{}' is not a valid expression", trimmed));
-        }
-
-        Err("expressions can only contain one operator".to_string())
     }
 
     // --- Dependency Methods ---
@@ -444,10 +487,29 @@ impl Spreadsheet {
             let (start, end) = trimmed.split_at(colon_pos);
             let end = &end[1..]; // Skip the ':'
     
-            let start_pos = Spreadsheet::parse_cell_reference(start)
-                .ok_or_else(|| format!("Invalid start cell: {}", start))?;
-            let end_pos = Spreadsheet::parse_cell_reference(end)
-                .ok_or_else(|| format!("Invalid end cell: {}", end))?;
+            let start_pos = Self::parse_cell_reference(start)
+                .ok_or_else(|| format!("Invalid start cell: '{}'", start))?;
+            let end_pos = Self::parse_cell_reference(end)
+                .ok_or_else(|| format!("Invalid end cell: '{}'", end))?;
+    
+            // Validate range ordering
+            let (start_row, start_col) = start_pos;
+            let (end_row, end_col) = end_pos;
+            
+            if start_row > end_row || start_col > end_col {
+                let start_label = format!("{}{}", 
+                    Self::column_index_to_label(start_col),
+                    start_row + 1
+                );
+                let end_label = format!("{}{}",
+                    Self::column_index_to_label(end_col),
+                    end_row + 1
+                );
+                return Err(format!(
+                    "Range must be in ascending order: {}:{}",
+                    start_label, end_label
+                ));
+            }
     
             return Ok(FunctionArg::Range(start_pos, end_pos));
         }
@@ -466,10 +528,20 @@ impl Spreadsheet {
         Err(format!("Invalid function argument: {}", trimmed))
     }
     
+
+
     // --- Function stubs ---
     fn handle_sleep(&self, arg: &str) -> Result<i32, String> {
-        Err(format!("SLEEP({}) not implemented", arg))
+        match Self::parse_function_argument(arg)? {
+            FunctionArg::Cell(row, col) => {
+                self.get_cell_value(row, col)
+                    .ok_or_else(|| format!("Invalid cell: {}{}", Self::column_index_to_label(col), row + 1))
+            }
+            FunctionArg::Literal(val) => Ok(val),
+            _ => unreachable!() // Already validated during parsing
+        }
     }
+
     fn handle_max(&self, arg: &str) -> Result<i32, String> {
         Err(format!("MAX({}) not implemented", arg))
     }
@@ -481,25 +553,26 @@ impl Spreadsheet {
     }
 
     fn handle_sum(&self, arg: &str) -> Result<i32, String> {
-        match Self::parse_function_argument(arg)? {
-            FunctionArg::Range((start_row, start_col), (end_row, end_col)) => {
-                let mut sum = 0;
+        // SAFETY: `parse_expression` already guarantees `arg` is a valid range.
+        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) = 
+            Self::parse_function_argument(arg)? 
+        else {
+            // This case is unreachable due to validation in `parse_expression`.
+            unreachable!("SUM argument should have been validated as a range during parsing")
+        };
     
-                for row in start_row.min(end_row)..=start_row.max(end_row) {
-                    for col in start_col.min(end_col)..=start_col.max(end_col) {
-                        if let Some(value) = self.get_cell_value(row, col) {
-                            sum += value;
-                        } else {
-                            let cell_label = format!("{}{}", Self::column_index_to_label(col), row + 1);
-                            return Err(format!("invalid cell in range: {}", cell_label));
-                        }
-                    }
+        let mut sum = 0;
+        for row in start_row.min(end_row)..=start_row.max(end_row) {
+            for col in start_col.min(end_col)..=start_col.max(end_col) {
+                if let Some(value) = self.get_cell_value(row, col) {
+                    sum += value;
+                } else {
+                    let cell_label = format!("{}{}", Self::column_index_to_label(col), row + 1);
+                    return Err(format!("invalid cell in range: {}", cell_label));
                 }
-    
-                Ok(sum)
             }
-            _ => Err("SUM expects a range argument like A1:B5".to_string()),
         }
+        Ok(sum)
     }
     
     fn handle_stdev(&self, arg: &str) -> Result<i32, String> {
