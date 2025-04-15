@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{self, Write};
 
 #[derive(Clone)]
@@ -192,47 +192,55 @@ impl Spreadsheet {
     // --- Dependency Methods ---
 
     // Extract all cell references (dependencies) from an expression.
-fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
-    let mut deps = HashSet::new();
+    /// Extract dependencies by walking the expression tree.
+    /// For SUM functions, if the argument decodes to a range, all cells in that range are added.
+    fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
+        let mut deps = HashSet::new();
 
-    fn recurse(expr: &Expression, deps: &mut HashSet<(usize, usize)>) {
-        match expr {
-            Expression::Cell(r, c) => {
-                deps.insert((*r, *c));
-            }
-            Expression::BinaryOp(left, _, right) => {
-                recurse(left, deps);
-                recurse(right, deps);
-            }
-            Expression::Function(name, arg) => {
-                if name == "SUM" {
-                    match Spreadsheet::parse_function_argument(arg) {
-                        Ok(FunctionArg::Range((r1, c1), (r2, c2))) => {
-                            for row in r1.min(r2)..=r1.max(r2) {
-                                for col in c1.min(c2)..=c1.max(c2) {
-                                    deps.insert((row, col));
+        fn recurse(expr: &Expression, deps: &mut HashSet<(usize, usize)>) {
+            match expr {
+                Expression::Cell(r, c) => {
+                    deps.insert((*r, *c));
+                }
+                Expression::BinaryOp(left, _, right) => {
+                    recurse(left, deps);
+                    recurse(right, deps);
+                }
+                Expression::Function(name, arg) => {
+                    // For SUM, we decode the argument as a range.
+                    if name == "SUM" {
+                        match Spreadsheet::parse_function_argument(arg) {
+                            Ok(FunctionArg::Range((r1, c1), (r2, c2))) => {
+                                // Loop over the range regardless of order.
+                                for row in r1.min(r2)..=r1.max(r2) {
+                                    for col in c1.min(c2)..=c1.max(c2) {
+                                        deps.insert((row, col));
+                                    }
                                 }
                             }
-                        }
-                        _ => {
-                            // Invalid SUM argument: do nothing or handle as needed
+                            _ => {
+                                // For an invalid argument to SUM, we do nothing
+                                // (or optionally log an error).
+                            }
                         }
                     }
+                    // You can add similar handling for other functions that introduce dependencies.
                 }
-                // Other functions can be added similarly here if they depend on cells/ranges.
+                _ => {
+                    // No dependencies for Literal, etc.
+                }
             }
-            _ => {}
         }
+
+        recurse(expr, &mut deps);
+        deps
     }
 
-    recurse(expr, &mut deps);
-    deps
-}
-
-
-    // Update dependencies (forward and reverse) for a given cell.
+    /// Update dependencies for a given cell:
+    /// Remove the old dependencies, then extract from the new expression and update both
+    /// forward and reverse dependency maps.
     fn update_dependencies(&mut self, cell: (usize, usize), expr: &Expression) -> Result<(), String> {
-        // Remove old reverse dependencies for this cell
+        // Remove old reverse dependencies for this cell.
         if let Some(old_deps) = self.dependencies.get(&cell) {
             for dep in old_deps {
                 if let Some(set) = self.reverse_dependencies.get_mut(dep) {
@@ -240,8 +248,8 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
                 }
             }
         }
-    
-        // Extract and store new dependencies
+
+        // Extract new dependencies from the expression.
         let new_deps = Self::extract_dependencies(expr);
         for dep in &new_deps {
             self.reverse_dependencies.entry(*dep).or_default().insert(cell);
@@ -250,7 +258,8 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
         Ok(())
     }
 
-    // Cycle detection: simulate applying new dependencies, then run DFS.
+    /// Cycle detection remains unchanged.
+    /// It simulates applying the new dependencies for 'start' and then runs a DFS to detect cycles.
     fn detect_cycle(&self, start: (usize, usize), new_deps: &HashSet<(usize, usize)>) -> bool {
         let mut visited = HashSet::new();
         let mut stack = HashSet::new();
@@ -285,53 +294,100 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
         dfs(start, &simulated, &mut visited, &mut stack)
     }
 
-    // Recalculate all dependent cells (including the changed one) 
-    // Propagating errors: if a dependency fails, mark the cell as error.
-    fn recalculate_dependents(&mut self, cell: (usize, usize)) -> Result<(), String> {
-        let mut visited = HashSet::new();
-        let mut stack = vec![cell];
-    
-        while let Some(current) = stack.pop() {
-            // Propagate to dependents (reverse dependencies)
-            if let Some(dependents) = self.reverse_dependencies.get(&current) {
+    /// Compute a topological order of all cells that are affected by a change starting from `start`.
+    /// This orders cells so that any given cell is recalculated only after its dependencies.
+    fn topological_order(&self, start: (usize, usize)) -> Vec<(usize, usize)> {
+        let mut affected = HashSet::new();
+        let mut queue = VecDeque::new();
+        queue.push_back(start);
+        affected.insert(start);
+
+        // Collect all affected cells (BFS via reverse_dependencies).
+        while let Some(cell) = queue.pop_front() {
+            if let Some(dependents) = self.reverse_dependencies.get(&cell) {
                 for &dep in dependents {
-                    if visited.insert(dep) {
-                        stack.push(dep);
+                    if affected.insert(dep) {
+                        queue.push_back(dep);
                     }
                 }
             }
-    
-            // Check for errors in dependencies and propagate the error to the current cell
+        }
+
+        // Build in-degree counts for the affected cells.
+        let mut in_degree: HashMap<(usize, usize), usize> = HashMap::new();
+        for &cell in &affected {
+            in_degree.insert(cell, 0);
+        }
+        // For each cell, count dependencies that are also affected.
+        for &cell in &affected {
+            if let Some(deps) = self.dependencies.get(&cell) {
+                for &dep in deps {
+                    if affected.contains(&dep) {
+                        *in_degree.entry(cell).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+
+        // Use a queue to gather all cells with no incoming affected dependency.
+        let mut topo_queue: VecDeque<(usize, usize)> = in_degree
+            .iter()
+            .filter(|&(_, &deg)| deg == 0)
+            .map(|(&cell, _)| cell)
+            .collect();
+        let mut sorted = Vec::new();
+        while let Some(cell) = topo_queue.pop_front() {
+            sorted.push(cell);
+            // Decrease the in-degree for dependents.
+            if let Some(dependents) = self.reverse_dependencies.get(&cell) {
+                for &dep in dependents {
+                    if affected.contains(&dep) {
+                        if let Some(degree) = in_degree.get_mut(&dep) {
+                            *degree = degree.saturating_sub(1);
+                            if *degree == 0 {
+                                topo_queue.push_back(dep);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        sorted
+    }
+
+    /// Recalculate all dependent cells (including the changed one) in the proper dependency order.
+    /// This version uses topological sorting to ensure that a cell’s dependencies are updated first.
+    fn recalculate_dependents(&mut self, cell: (usize, usize)) -> Result<(), String> {
+        // Obtain the topologically sorted order of all affected cells.
+        let sorted_cells = self.topological_order(cell);
+
+        // Process each cell in the determined order.
+        for current in sorted_cells {
+            // Propagate error: if any direct dependency has an error, mark this cell as error.
             if let Some(deps) = self.dependencies.get(&current) {
                 let mut dep_error = None;
                 for &d in deps {
-                    // Check if any dependency has an error
                     if let Some(err) = self.errors.get(&d) {
                         dep_error = Some(err.clone());
-                        break;  // Stop as soon as an error is found
+                        break;  // Stop at the first encountered error.
                     }
                 }
-    
-                // If any dependency had an error, mark the current cell as having an error
-                if let Some(_) = dep_error {
-                    // Mark the cell as errored (this is the key change)
+                if dep_error.is_some() {
                     self.errors.insert(current, "ERR".to_string());
-                    self.update_cell(current.0, current.1, 0); // Set the cell to 0 as default error value
-                    continue;  // Skip further recalculation for this cell
+                    self.update_cell(current.0, current.1, 0); // Set to default error value.
+                    continue;  // Skip further evaluation for this cell.
                 }
             }
-    
-            // If there's no error, proceed with normal evaluation
+            // If no dependency error, evaluate the cell’s expression.
             if let Some(expr) = self.cell_expressions.get(&current) {
                 match self.evaluate_expression(expr) {
                     Ok(val) => {
                         self.update_cell(current.0, current.1, val);
-                        self.errors.remove(&current);  // Clear any errors from previous evaluations
+                        self.errors.remove(&current); // Clear previous errors.
                     }
                     Err(e) => {
-                        // Store the error as 'ERR' and set the value to 0
                         self.errors.insert(current, e.clone());
-                        self.update_cell(current.0, current.1, 0); // Set the cell to 0 if error occurs
+                        self.update_cell(current.0, current.1, 0);
                     }
                 }
             }
