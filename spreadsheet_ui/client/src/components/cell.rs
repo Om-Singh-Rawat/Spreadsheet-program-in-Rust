@@ -1,5 +1,5 @@
-// client/src/components/cell.rs
 use yew::prelude::*;
+use web_sys::HtmlInputElement;
 
 #[derive(Properties, PartialEq)]
 pub struct CellProps {
@@ -8,6 +8,7 @@ pub struct CellProps {
     pub value: String,
     pub selected: bool,
     pub on_change: Callback<(usize, usize, String)>,
+    pub onclick: Callback<MouseEvent>,
 }
 
 #[function_component(Cell)]
@@ -15,15 +16,17 @@ pub fn cell(props: &CellProps) -> Html {
     let is_editing = use_state(|| false);
     let input_ref = use_node_ref();
 
-    // Handle cell click to start editing
-    let onclick = {
+    // when the cell is clicked: fire parent’s onclick, then go into edit mode
+    let onclick_cell = {
         let is_editing = is_editing.clone();
-        Callback::from(move |_| {
+        let onclick = props.onclick.clone();
+        Callback::from(move |e: MouseEvent| {
+            onclick.emit(e);
             is_editing.set(true);
         })
     };
 
-    // Handle input blur to save changes
+    // when input loses focus: read value and bubble up on_change
     let onblur = {
         let is_editing = is_editing.clone();
         let on_change = props.on_change.clone();
@@ -32,30 +35,34 @@ pub fn cell(props: &CellProps) -> Html {
         let col = props.col;
 
         Callback::from(move |_| {
-            if let Some(input) = input_ref.cast::<web_sys::HtmlInputElement>() {
-                let value = input.value();
-                on_change.emit((row, col, value));
+            if let Some(input) = input_ref.cast::<HtmlInputElement>() {
+                let val = input.value();
+                on_change.emit((row, col, val));
             }
             is_editing.set(false);
         })
     };
 
     html! {
-        <div 
-            class={classes!("cell", props.selected.then(|| "selected"))} 
-            {onclick}
+        <div
+            class={ classes!("cell", props.selected.then(|| "selected")) }
+            onclick={onclick_cell}
         >
-            if *is_editing {
-                <input 
-                    ref={input_ref}
-                    type="text"
-                    class="cell-input"
-                    value={props.value.clone()}
-                    autofocus=true
-                    onblur={onblur}
-                />
-            } else {
-                <div class="cell-value">{&props.value}</div>
+            {
+                if *is_editing {
+                    html! {
+                        <input
+                            ref={input_ref}
+                            type="text"
+                            class="cell-input"
+                            value={props.value.clone()}
+                            autofocus=true
+                            onblur={onblur}
+                        />
+                    }
+                } else {
+                    html! { <div class="cell-value">{ &props.value }</div> }
+                }
             }
         </div>
     }
