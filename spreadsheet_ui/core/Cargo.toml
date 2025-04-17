@@ -1,0 +1,12 @@
+[package]
+name = "core"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+cli = []    # optional CLI entrypoint
+wasm = ["wasm-bindgen", "console_error_panic_hook"]   # enable wasm-bindgen exports
+
+[dependencies]
+wasm-bindgen = { version = "0.2", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
