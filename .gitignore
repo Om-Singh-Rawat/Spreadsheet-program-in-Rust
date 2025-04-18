@@ -1,2 +1,10 @@
 /target
 .qodo
+
+/spreadsheet_ui/target
+/spreadsheet_ui/Cargo.lock
+/spreadsheet_ui/server/static/client_bg.wasm
+/spreadsheet_ui/server/static/client_bg.wasm.d.ts
+/spreadsheet_ui/server/static/client.d.ts
+/spreadsheet_ui/server/static/client.js
+/spreadsheet_ui/server/static/package.json

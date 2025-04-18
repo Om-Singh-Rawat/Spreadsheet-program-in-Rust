@@ -1,0 +1,55 @@
+.spreadsheet-container {
+    display: flex;
+    flex-direction: column;
+    font-family: Arial, sans-serif;
+}
+
+.header-row, .grid-row {
+    display: flex;
+}
+
+.corner-cell, .header-cell, .row-header, .grid-cell {
+    border: 1px solid #ddd;
+    padding: 4px;
+    min-width: 60px;
+    height: 25px;
+    text-align: center;
+}
+
+.header-cell, .row-header {
+    background-color: #f0f0f0;
+    font-weight: bold;
+}
+
+/* server/static/styles.css */
+.cell {
+    position: relative;
+    border: 1px solid #ccc;
+    min-width: 100px;
+    height: 30px;
+    padding: 2px;
+}
+
+.cell.selected {
+    border-color: #2196F3;
+    box-shadow: 0 0 0 1px #2196F3;
+}
+
+.cell-input {
+    width: 100%;
+    height: 100%;
+    border: none;
+    outline: none;
+    padding: 0 5px;
+    font: inherit;
+}
+
+.cell-value {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    padding: 0 5px;
+    white-space: nowrap;
+    overflow: hidden;
+}
