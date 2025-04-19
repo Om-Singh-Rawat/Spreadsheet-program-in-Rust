@@ -75,3 +75,32 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+.status-bar {
+    display: flex;
+    gap: 20px;
+    padding: 8px;
+    background-color: #f0f0f0;
+    border-top: 1px solid #ccc;
+    font-size: 14px;
+}
+
+.cell-ref, .formula, .status {
+    padding: 4px 8px;
+}
+
+.cell-ref {
+    width: 80px;
+    font-weight: bold;
+}
+
+.formula {
+    flex-grow: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.status {
+    color: #666;
+}

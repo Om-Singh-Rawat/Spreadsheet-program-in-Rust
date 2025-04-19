@@ -744,6 +744,8 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
         } else {
             self.cell_expressions.remove(&(target_row, target_col));
         }
+
+        self.cell_raw.insert((target_row, target_col), expr.to_string());
     
         // Update the dependencies, and handle cycle detection here
         if let Err(_) = self.update_dependencies((target_row, target_col), &parsed_expr) {
@@ -821,14 +823,13 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
         }
     }
 
-
-        /// Return the *raw* contents of a cell.  
+    /// Return the *raw* contents of a cell.  
     /// If it was entered as a formula/expression, we return that;  
     /// otherwise we return its literal value as a string.
     pub fn get_cell_content(&self, row: usize, col: usize) -> String {
-        if let Some(raw) = self.cell_raw.get(&(row, col)) {
+        if let Some(exp) = self.cell_expressions.get(&(row, col)) {
             // always echo exactly what the user typed: "A1+1" or "10"
-            raw.clone()
+            exp.clone()
         } else {
             // first‐time cells are blank → show zero
             self.get_cell_value(row, col).unwrap_or(0).to_string()
