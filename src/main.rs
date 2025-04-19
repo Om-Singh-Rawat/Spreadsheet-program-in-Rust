@@ -28,6 +28,8 @@ struct Spreadsheet {
     dependencies: HashMap<(usize, usize), HashSet<(usize, usize)>>,       // For each cell, which cells it depends on.
     reverse_dependencies: HashMap<(usize, usize), HashSet<(usize, usize)>>, // For each cell, which cells depend on it.
     errors: HashMap<(usize, usize), String>, // Cells with errors (display "ERR")
+    total_sleep_secs: u64,
+    last_sleep_time: u64,
 }
 
 impl Spreadsheet {
@@ -44,6 +46,8 @@ impl Spreadsheet {
             dependencies: HashMap::new(),
             reverse_dependencies: HashMap::new(),
             errors: HashMap::new(),
+            total_sleep_secs: 0,
+            last_sleep_time: 0,
         }
     }
 
@@ -238,44 +242,49 @@ impl Spreadsheet {
     // Extract all cell references (dependencies) from an expression.
     /// Extract dependencies by walking the expression tree.
     /// For SUM functions, if the argument decodes to a range, all cells in that range are added.
-fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
-    let mut deps = HashSet::new();
-
-    fn recurse(expr: &Expression, deps: &mut HashSet<(usize, usize)>) {
-        match expr {
-            Expression::Cell(r, c) => {
-                deps.insert((*r, *c));
-            }
-            Expression::BinaryOp(left, _, right) => {
-                recurse(left, deps);
-                recurse(right, deps);
-            }
-            Expression::Function(name, arg) => {
-                // Handle all range-based functions the same way
-                match name.as_str() {
-                    "SUM" | "MIN" | "MAX" | "AVG" | "STDEV" => {
-                        if let Ok(FunctionArg::Range((r1, c1), (r2, c2))) = 
-                            Spreadsheet::parse_function_argument_static(arg) 
-                        {
-                            for row in r1.min(r2)..=r1.max(r2) {
-                                for col in c1.min(c2)..=c1.max(c2) {
-                                    deps.insert((row, col));
+    fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
+        let mut deps = HashSet::new();
+    
+        fn recurse(expr: &Expression, deps: &mut HashSet<(usize, usize)>) {
+            match expr {
+                Expression::Cell(r, c) => {
+                    deps.insert((*r, *c));
+                }
+                Expression::BinaryOp(left, _, right) => {
+                    recurse(left, deps);
+                    recurse(right, deps);
+                }
+                Expression::Function(name, arg) => {
+                    match name.as_str() {
+                        "SUM" | "MIN" | "MAX" | "AVG" | "STDEV" => {
+                            if let Ok(FunctionArg::Range((r1, c1), (r2, c2))) = 
+                                Spreadsheet::parse_function_argument_static(arg) 
+                            {
+                                for row in r1.min(r2)..=r1.max(r2) {
+                                    for col in c1.min(c2)..=c1.max(c2) {
+                                        deps.insert((row, col));
+                                    }
                                 }
                             }
                         }
+                        "SLEEP" => {
+                            if let Ok(FunctionArg::Cell(r, c)) = 
+                                Spreadsheet::parse_function_argument_static(arg) 
+                            {
+                                deps.insert((r, c));
+                            }
+                        }
+                        _ => {}
                     }
-                    // Add other function types here if needed
-                    _ => {}
                 }
+                _ => {}
             }
-            _ => {}
         }
+    
+        recurse(expr, &mut deps);
+        deps
     }
-
-    recurse(expr, &mut deps);
-    deps
-}
-
+    
     /// Update dependencies for a given cell:
     /// Remove the old dependencies, then extract from the new expression and update both
     /// forward and reverse dependency maps.
@@ -398,10 +407,11 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
     /// Recalculate all dependent cells (including the changed one) in the proper dependency order.
     /// This version uses topological sorting to ensure that a cell’s dependencies are updated first.
     fn recalculate_dependents(&mut self, cell: (usize, usize)) -> Result<(), String> {
-        // Obtain the topologically sorted order of all affected cells.
+        // Reset total sleep time for this recalculation run
+        self.total_sleep_secs = 0;
+    
         let sorted_cells = self.topological_order(cell);
-
-        // Process each cell in the determined order.
+    
         for current in sorted_cells {
             // Propagate error: if any direct dependency has an error, mark this cell as error.
             if let Some(deps) = self.dependencies.get(&current) {
@@ -409,21 +419,23 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
                 for &d in deps {
                     if let Some(err) = self.errors.get(&d) {
                         dep_error = Some(err.clone());
-                        break;  // Stop at the first encountered error.
+                        break;
                     }
                 }
                 if dep_error.is_some() {
                     self.errors.insert(current, "ERR".to_string());
-                    self.update_cell(current.0, current.1, 0); // Set to default error value.
-                    continue;  // Skip further evaluation for this cell.
+                    self.update_cell(current.0, current.1, 0);
+                    continue;
                 }
             }
-            // If no dependency error, evaluate the cell’s expression.
-            if let Some(expr) = self.cell_expressions.get(&current) {
-                match self.evaluate_expression(expr) {
+    
+            // Fetch the expression early to avoid borrow conflict
+            let expr_opt = self.cell_expressions.get(&current).cloned();
+            if let Some(expr) = expr_opt {
+                match self.evaluate_expression(&expr) {
                     Ok(val) => {
                         self.update_cell(current.0, current.1, val);
-                        self.errors.remove(&current); // Clear previous errors.
+                        self.errors.remove(&current);
                     }
                     Err(e) => {
                         self.errors.insert(current, e.clone());
@@ -432,14 +444,24 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
                 }
             }
         }
+    
+        // Sleep once after all evaluations
+        if self.total_sleep_secs > 0 {
+            self.last_sleep_time = self.total_sleep_secs;
+            std::thread::sleep(std::time::Duration::from_secs(self.total_sleep_secs));
+            self.total_sleep_secs = 0;
+        }
+    
         Ok(())
     }
+    
+    
     
 
     // --- End Dependency Methods ---
 
     // --- Evaluation methods (unchanged) ---
-    fn evaluate_expression(&self, expr: &Expression) -> Result<i32, String> {
+    fn evaluate_expression(&mut self, expr: &Expression) -> Result<i32, String> {
         match expr {
             Expression::Literal(v) => Ok(*v),
             Expression::Cell(r, c) => self.get_cell_value(*r, *c)
@@ -546,16 +568,28 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
 
 
     // --- Function stubs ---
-    fn handle_sleep(&self, arg: &str) -> Result<i32, String> {
+    fn handle_sleep(&mut self, arg: &str) -> Result<i32, String> {
         match self.parse_function_argument(arg)? {
-            FunctionArg::Cell(row, col) => {
-                self.get_cell_value(row, col)
-                    .ok_or_else(|| format!("Invalid cell: {}{}", Self::column_index_to_label(col), row + 1))
+            FunctionArg::Literal(secs) => {
+                if secs > 0 {
+                    self.total_sleep_secs += secs as u64;
+                }
+                Ok(secs)  // even negative values are returned
             }
-            FunctionArg::Literal(val) => Ok(val),
-            _ => unreachable!() // Already validated during parsing
+            FunctionArg::Cell(r, c) => {
+                let val = self.get_cell_value(r, c)
+                    .ok_or_else(|| "Invalid cell in SLEEP".to_string())?;
+    
+                if val > 0 {
+                    self.total_sleep_secs += val as u64;
+                }
+                Ok(val)  // return value as-is
+            }
+            _ => Err("SLEEP expects a number or a cell reference".to_string()),
         }
+
     }
+    
 
     fn handle_sum(&self, arg: &str) -> Result<i32, String> {
         // SAFETY: `parse_expression` already guarantees `arg` is a valid range.
@@ -764,16 +798,36 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
     }
     
     
-
     fn scroll(&mut self, dir: &str) {
         match dir {
-            "w" => self.view_top = self.view_top.saturating_sub(10),
-            "s" => self.view_top = (self.view_top + 10).min(self.rows.saturating_sub(10)),
-            "a" => self.view_left = self.view_left.saturating_sub(10),
-            "d" => self.view_left = (self.view_left + 10).min(self.cols.saturating_sub(10)),
+            // Scroll up if possible
+            "w" => {
+                self.view_top = self.view_top.saturating_sub(10);
+            }
+    
+            // Scroll down only if we are showing fewer than 10 rows at the bottom
+            "s" => {
+                if self.view_top + 10 < self.rows {
+                    self.view_top = (self.view_top + 10).min(self.rows - 10);
+                }
+            }
+    
+            // Scroll left if possible
+            "a" => {
+                self.view_left = self.view_left.saturating_sub(10);
+            }
+    
+            // Scroll right only if we are showing fewer than 10 columns at the right
+            "d" => {
+                if self.view_left + 10 < self.cols {
+                    self.view_left = (self.view_left + 10).min(self.cols - 10);
+                }
+            }
+    
             _ => {}
         }
     }
+    
 
     fn handle_scroll_to(&mut self, input: &str) -> Result<(), String> {
         let parts: Vec<&str> = input.split_whitespace().collect();
@@ -830,8 +884,9 @@ fn main() {
     let mut last_status = "ok".to_string();
     loop {
         sheet.print_grid();
-        print!("[0.0] ({}) > ", last_status);
-        io::stdout().flush().unwrap();
+        print!("[{}.0] ({}) > ", sheet.last_sleep_time, last_status);
+        sheet.last_sleep_time = 0;
+        io::stdout().flush().unwrap(); 
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
         let input = input.trim();
