@@ -1,9 +1,8 @@
-// client/src/components/spreadsheet.rs
-
 use crate::components::cell::Cell;
-use yew::prelude::*;
 use core::spreadsheet::Spreadsheet;
-use std::collections::HashMap;
+use yew::prelude::*;
+use wasm_bindgen::prelude::*;
+use core::wasm::WasmSheet;  
 
 #[derive(Properties, PartialEq)]
 pub struct SpreadsheetProps {
@@ -13,30 +12,47 @@ pub struct SpreadsheetProps {
 
 #[function_component(SpreadsheetGrid)]
 pub fn spreadsheet_grid(props: &SpreadsheetProps) -> Html {
-    let spreadsheet = use_state(|| Spreadsheet::new(props.rows, props.cols));
-    let selected_cell = use_state(|| (0, 0));
-    let cell_values = use_state(|| HashMap::<(usize, usize), String>::new());
+    let spreadsheet = use_state(|| WasmSheet::new(props.rows, props.cols));  // the actual spreadsheet engine (WasmSheet from Rust).
+    let selected_cell = use_state(|| (0, 0));     // tracks which cell is clicked/active.
 
-    // callback to update both the displayed text and the underlying Spreadsheet model
     let on_cell_change = {
         let spreadsheet = spreadsheet.clone();
-        let cell_values = cell_values.clone();
+        
         Callback::from(move |(row, col, value): (usize, usize, String)| {
-            // update our local cell_values state
-            let mut current = (*cell_values).clone();
-            current.insert((row, col), value.clone());
-            cell_values.set(current);
 
-            // feed the input string (e.g. "A1=42") into the core model
-            let mut sheet = (*spreadsheet).clone();
-            let input = format!(
-                "{}{}={}",
+            web_sys::console::log_1(&format!(
+                "on_cell_change → cell {}{} = `{}`",
                 Spreadsheet::column_index_to_label(col),
                 row + 1,
                 value
+            ).into());
+
+            // Build A1-style reference (e.g., "B1")
+            let cell_ref = format!(
+                "{}{}",
+                Spreadsheet::column_index_to_label(col),
+                row + 1,
             );
-            let _ = sheet.process_input(&input);
-            spreadsheet.set(sheet);
+    
+            let mut new_sheet = (*spreadsheet).clone();
+    
+            let trimmed_value = value.trim();
+
+            if let Err(e) = new_sheet.assign(&cell_ref, &trimmed_value) {
+                web_sys::console::error_1(
+                    &JsValue::from_str(&format!("Error processing input '{}={}': {:?}", 
+                        cell_ref, trimmed_value, e))
+                );
+            }
+    
+            spreadsheet.set(new_sheet);
+        })
+    };
+
+    let select_cell = {
+        let selected_cell = selected_cell.clone();
+        Callback::from(move |(row, col): (usize, usize)| {
+            selected_cell.set((row, col));
         })
     };
 
@@ -44,49 +60,35 @@ pub fn spreadsheet_grid(props: &SpreadsheetProps) -> Html {
         <div class="spreadsheet-container">
             <div class="header-row">
                 <div class="corner-cell"></div>
-                {
-                    (0..props.cols).map(|col| {
-                        let label = Spreadsheet::column_index_to_label(col);
-                        html! { <div class="header-cell">{ label }</div> }
-                    }).collect::<Html>()
-                }
+                { (0..props.cols).map(|col| {
+                    let label = Spreadsheet::column_index_to_label(col);
+                    html! { <div class="header-cell">{ label }</div> }
+                }).collect::<Html>() }
             </div>
-            {
-                (0..props.rows).map(|row| {
-                    html! {
-                        <div class="grid-row">
-                            <div class="row-header">{ row + 1 }</div>
-                            {
-                                (0..props.cols).map(|col| {
-                                    let value = (*cell_values)
-                                        .get(&(row, col))
-                                        .cloned()
-                                        .unwrap_or_default();
-                                    let selected = *selected_cell == (row, col);
-                                    let on_change = on_cell_change.clone();
-                                    let select_this = {
-                                        let selected_cell = selected_cell.clone();
-                                        Callback::from(move |_| {
-                                            selected_cell.set((row, col));
-                                        })
-                                    };
-
-                                    html! {
-                                        <Cell
-                                            row={row}
-                                            col={col}
-                                            value={value}
-                                            selected={selected}
-                                            on_change={on_change}
-                                            onclick={select_this}
-                                        />
-                                    }
-                                }).collect::<Html>()
+            { (0..props.rows).map(|row| {
+                html! {
+                    <div class="grid-row" key={row}>
+                        <div class="row-header">{ row + 1 }</div>
+                        { (0..props.cols).map(|col| {
+                            let has_error = spreadsheet.get_error(row, col).is_some();
+                            html! {
+                                <Cell
+                                    key={format!("{}-{}", row, col)}
+                                    row={row}
+                                    col={col}
+                                    value={spreadsheet.get(row, col)}
+                                    content={spreadsheet.get_content(row, col)}
+                                    is_formula={spreadsheet.is_formula(row, col)}
+                                    has_error={has_error}
+                                    on_change={on_cell_change.clone()}
+                                    is_selected={*selected_cell == (row, col)}
+                                    on_select={select_cell.clone()}
+                                />
                             }
-                        </div>
-                    }
-                }).collect::<Html>()
-            }
+                        }).collect::<Html>() }
+                    </div>
+                }
+            }).collect::<Html>() }
         </div>
     }
 }

@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{self, Write};
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 enum Expression {
     Literal(i32),
     Cell(usize, usize),
@@ -29,6 +29,7 @@ pub struct Spreadsheet {
     dependencies: HashMap<(usize, usize), HashSet<(usize, usize)>>,       // For each cell, which cells it depends on.
     reverse_dependencies: HashMap<(usize, usize), HashSet<(usize, usize)>>, // For each cell, which cells depend on it.
     errors: HashMap<(usize, usize), String>, // Cells with errors (display "ERR")
+    cell_raw: HashMap<(usize, usize), String>,
 }
 
 impl Spreadsheet {
@@ -45,6 +46,7 @@ impl Spreadsheet {
             dependencies: HashMap::new(),
             reverse_dependencies: HashMap::new(),
             errors: HashMap::new(),
+            cell_raw: HashMap::new(),
         }
     }
 
@@ -735,8 +737,13 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
             return Err("cycle detected".to_string());
         }
     
-        // Store new expression and update dependencies
-        self.cell_expressions.insert((target_row, target_col), parsed_expr.clone());
+        // Store new expression _only_ if it’s not a pure literal,
+        // otherwise drop any previous formula.
+        if !matches!(parsed_expr, Expression::Literal(_)) {
+            self.cell_expressions.insert((target_row, target_col), parsed_expr.clone());
+        } else {
+            self.cell_expressions.remove(&(target_row, target_col));
+        }
     
         // Update the dependencies, and handle cycle detection here
         if let Err(_) = self.update_dependencies((target_row, target_col), &parsed_expr) {
@@ -794,7 +801,7 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
     }
 
     pub fn process_input(&mut self, input: &str) -> Result<(), String> {
-        let trimmed = input.trim().to_lowercase();
+        let trimmed = input.trim().to_string();
         match trimmed.as_str() {
             "disable_output" => {
                 self.output_enabled = false;
@@ -812,5 +819,29 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
                 }
             }
         }
+    }
+
+
+        /// Return the *raw* contents of a cell.  
+    /// If it was entered as a formula/expression, we return that;  
+    /// otherwise we return its literal value as a string.
+    pub fn get_cell_content(&self, row: usize, col: usize) -> String {
+        if let Some(raw) = self.cell_raw.get(&(row, col)) {
+            // always echo exactly what the user typed: "A1+1" or "10"
+            raw.clone()
+        } else {
+            // first‐time cells are blank → show zero
+            self.get_cell_value(row, col).unwrap_or(0).to_string()
+        }
+    }
+
+    /// True if this cell was ever assigned a parsed‐expression (i.e. is a “formula”).
+    pub fn is_formula(&self, row: usize, col: usize) -> bool {
+        self.cell_expressions.contains_key(&(row, col))
+    }
+
+    /// If the last computation of this cell errored, return the error string.
+    pub fn get_error(&self, row: usize, col: usize) -> Option<String> {
+        self.errors.get(&(row, col)).cloned()
     }
 }
