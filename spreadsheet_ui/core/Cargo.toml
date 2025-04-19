@@ -9,4 +9,7 @@ wasm = ["wasm-bindgen", "console_error_panic_hook"]   # enable wasm-bindgen expo
 
 [dependencies]
 wasm-bindgen = { version = "0.2", optional = true }
+js-sys = "0.3.77"
+csv = "1.3"
+web-sys = { version = "0.3.77", features = ["Window", "Request", "Response"] }
 console_error_panic_hook = { version = "0.1", optional = true }

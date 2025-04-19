@@ -12,9 +12,9 @@ pub struct CellProps {
     pub on_change: Callback<(usize, usize, String)>,
     pub is_selected: bool,
     pub on_select: Callback<(usize, usize)>,
+    pub on_edit_start: Callback<()>, 
+    pub on_edit_end: Callback<()>,   
 }
-
-// ... (imports and props)
 
 #[function_component(Cell)]
 pub fn cell(props: &CellProps) -> Html {
@@ -30,7 +30,38 @@ pub fn cell(props: &CellProps) -> Html {
         })
     };
 
-    let ondoubleclick = {
+
+        // Create focus ref for selected cells
+        let cell_ref = use_node_ref();
+    
+        // Effect to focus cell when selected
+        use_effect_with_deps(
+            |(is_selected, cell_ref, is_editing)| {
+                if *is_selected && !**is_editing {
+                    if let Some(element) = cell_ref.cast::<web_sys::HtmlElement>() {
+                        let _ = element.focus();
+                    }
+                }
+                || ()
+            },
+            (props.is_selected, cell_ref.clone(), is_editing.clone())
+        );
+        
+        // Effect to focus input when editing begins
+        use_effect_with_deps(
+            |(is_editing, input_ref)| {
+                if **is_editing {
+                    if let Some(input) = input_ref.cast::<HtmlInputElement>() {
+                        let _ = input.focus();
+                        input.select();
+                    }
+                }
+                || ()
+            },
+            (is_editing.clone(), input_ref.clone())
+        );
+    
+    let ondblclick = {
         let is_editing = is_editing.clone();
         Callback::from(move |_| {
             is_editing.set(true);
@@ -87,15 +118,19 @@ pub fn cell(props: &CellProps) -> Html {
     );
 
     html! {
-        <div class={cell_classes} onclick={onclick} ondblclick={ondoubleclick}>
+        <div class={cell_classes}
+        onclick={onclick}
+        ondblclick={ondblclick}
+        ref={cell_ref}
+        tabindex={if props.is_selected { "0" } else { "-1" }}>
             {
                 if *is_editing {
                     html! {
                         <input
                             ref={input_ref}
                             type="text"
-                            class="cell-input"
-                            value={display_value}
+                            class="cell-editor"
+                            value={props.content.clone()}
                             autofocus=true
                             onblur={onblur}
                             onkeydown={onkeydown}
@@ -103,9 +138,9 @@ pub fn cell(props: &CellProps) -> Html {
                     }
                 } else {
                     html! {
-                        <div class="cell-value">
+                        <span class={if props.is_formula { "formula-value" } else { "" }}>
                             { display_value }
-                        </div>
+                        </span>
                     }
                 }
             }

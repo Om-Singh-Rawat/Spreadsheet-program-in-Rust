@@ -827,9 +827,9 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
     /// If it was entered as a formula/expression, we return that;  
     /// otherwise we return its literal value as a string.
     pub fn get_cell_content(&self, row: usize, col: usize) -> String {
-        if let Some(exp) = self.cell_expressions.get(&(row, col)) {
+        if let Some(raw) = self.cell_raw.get(&(row, col)) {
             // always echo exactly what the user typed: "A1+1" or "10"
-            exp.clone()
+            raw.clone()
         } else {
             // first‐time cells are blank → show zero
             self.get_cell_value(row, col).unwrap_or(0).to_string()
@@ -845,4 +845,63 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
     pub fn get_error(&self, row: usize, col: usize) -> Option<String> {
         self.errors.get(&(row, col)).cloned()
     }
+
+    // In spreadsheet.rs
+    pub fn import_csv(&mut self, csv_data: &str) -> Result<(), String> {
+        let mut rdr = csv::ReaderBuilder::new()
+            .has_headers(false)
+            .flexible(true) // Allow variable row lengths
+            .from_reader(csv_data.as_bytes());
+
+        for (row_idx, result) in rdr.records().enumerate() {
+            let record = result.map_err(|e| format!("CSV error (row {}): {}", row_idx + 1, e))?;
+            
+            if row_idx >= self.rows {
+                return Err(format!("CSV exceeds row limit (max {})", self.rows));
+            }
+
+            for (col_idx, field) in record.iter().enumerate() {
+                if col_idx >= self.cols {
+                    return Err(format!("CSV row {} exceeds column limit (max {})", 
+                        row_idx + 1, self.cols));
+                }
+
+                let cell_ref = format!(
+                    "{}{}",
+                    Self::column_index_to_label(col_idx),
+                    row_idx + 1
+                );
+
+                // Skip empty fields
+                let trimmed = field.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+
+                // Handle quoted fields and escaped quotes
+                let sanitized = trimmed.replace("\"\"", "\""); // Unescape double quotes
+                self.handle_assignment(&format!("{}={}", cell_ref, sanitized))
+                    .map_err(|e| format!("Error in cell {}: {}", cell_ref, e))?;
+            }
+        }
+        Ok(())
+    }
+
+
+
+    pub fn export_csv(&self) -> String {
+        let mut wtr = csv::WriterBuilder::new()
+            .delimiter(b',')
+            .from_writer(vec![]);
+            
+        for row in 0..self.rows {
+            let mut record = vec![];
+            for col in 0..self.cols {
+                record.push(self.get_cell_content(row, col));
+            }
+            wtr.write_record(&record).unwrap();
+        }
+        String::from_utf8(wtr.into_inner().unwrap()).unwrap()
+    }
 }
+

@@ -13,7 +13,7 @@ pub mod wasm {
     use super::spreadsheet::Spreadsheet;
 
     #[wasm_bindgen]
-    #[derive(Clone)] 
+    #[derive(Clone, PartialEq)] 
     pub struct WasmSheet {
         inner: Spreadsheet,
     }
@@ -64,6 +64,54 @@ pub mod wasm {
                 .handle_assignment(input)
                 .map_err(|e| JsValue::from_str(&e))
         }
+
+        #[wasm_bindgen]
+        pub fn import_csv(&mut self, csv_data: &str) -> Result<(), JsValue> {
+            self.inner.import_csv(csv_data)
+                .map_err(|e| {
+                    let error_msg = format!("Import failed: {}", e);
+                    web_sys::console::error_1(&JsValue::from_str(&error_msg));
+                    JsValue::from_str(&error_msg)
+                })
+        }
+
+        #[wasm_bindgen]
+        pub fn export_csv(&self) -> String {
+            self.inner.export_csv()
+        }
+
+        #[wasm_bindgen]
+        pub fn download_csv(&self, filename: &str) -> Result<(), JsValue> {
+            let csv_data = self.inner.export_csv();
+            // Create a Uint8Array from the CSV string
+            let array = js_sys::Uint8Array::new_with_length(csv_data.len() as u32);
+            array.copy_from(csv_data.as_bytes());
+            // Create a Blob and download URL
+            let blob = web_sys::Blob::new_with_u8_array_sequence(&js_sys::Array::of1(&array))?;
+            let url = web_sys::Url::create_object_url_with_blob(&blob)?;
+            
+            // Create and trigger a download link
+            let window = web_sys::window().unwrap();
+            let document = window.document().unwrap();
+            let a = document.create_element("a")?;
+            a.set_attribute("href", &url)?;
+            a.set_attribute("download", filename)?;
+            a.dyn_ref::<web_sys::HtmlElement>().unwrap().click();
+            
+            web_sys::Url::revoke_object_url(&url)?;
+            Ok(())
+        }
+
+        #[wasm_bindgen]
+        pub fn column_index_to_label(index: usize) -> String {
+            Spreadsheet::column_index_to_label(index)
+        }
+
+        #[wasm_bindgen]
+        pub fn column_label_to_index(label: &str) -> Option<usize> {
+            Spreadsheet::column_label_to_index(label)
+        }
+
 
     }
 }
