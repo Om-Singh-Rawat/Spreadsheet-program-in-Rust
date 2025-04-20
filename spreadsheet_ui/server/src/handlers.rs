@@ -22,7 +22,7 @@ pub fn list_spreadsheets(storage: &State<Storage>) -> Json<ApiResponse<Vec<Sprea
 }
 
 // Get spreadsheet by ID
-#[get("/spreadsheets/<id>")]
+#[get("/spreadsheets/<id>", rank=2)]
 pub fn get_spreadsheet(id: &str, storage: &State<Storage>) -> Result<Json<ApiResponse<SpreadsheetData>>, status::Custom<Json<ApiResponse<()>>>> {
     match storage.get_spreadsheet(id) {
         Some(spreadsheet) => Ok(Json(ApiResponse {
@@ -178,3 +178,25 @@ pub fn import_spreadsheet(
         )),
     }
 }
+
+
+#[get("/spreadsheets/by_name?<name>", rank = 1)]
+pub fn get_spreadsheet_by_name(name: &str, storage: &State<Storage>) -> Result<Json<ApiResponse<SpreadsheetData>>, status::Custom<Json<ApiResponse<()>>>> {
+    match storage.get_by_name(name) {
+        Some(data) => Ok(Json(ApiResponse {
+            status: "success".to_string(),
+            data: Some(data),
+            message: None,
+        })),
+        None => Err(status::Custom(
+            Status::NotFound,
+            Json(ApiResponse {
+                status: "error".to_string(),
+                data: None,
+                message: Some(format!("Spreadsheet with name '{}' not found", name)),
+            }),
+        ))
+    }
+}
+
+

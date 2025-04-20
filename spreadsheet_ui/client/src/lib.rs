@@ -10,6 +10,25 @@ use wasm_bindgen::JsValue;
 use spreadsheet_core::spreadsheet::Spreadsheet;
 use api::ApiClient;
 use wasm_bindgen_futures::spawn_local;
+use serde::Deserialize;
+use gloo_net::http::Request;
+use serde_wasm_bindgen::from_value;
+
+#[derive(Deserialize)]
+struct SpreadsheetData {
+    id: String,
+    name: String,
+    content: String,
+    created_at: u64,
+    updated_at: u64,
+}
+
+#[derive(Deserialize)]
+struct ApiResponse<T> {
+    status: String,
+    data: T,
+    message: Option<String>,
+}
 
 
 #[function_component(App)]
@@ -17,7 +36,9 @@ fn app() -> Html {
     println!("Into app");
     let spreadsheet = use_state(|| WasmSheet::new(20, 10));
     let current_id = use_state(|| None::<String>);
-    let api_client = use_state(|| ApiClient::new());
+    let api_client = use_state(|| ApiClient::new(
+        "your_authentication_token_here".to_string()  // Provide actual token
+    ));
     
     // Import handler
     let on_import = {
@@ -62,44 +83,62 @@ fn app() -> Html {
         let spreadsheet = spreadsheet.clone();
         let current_id = current_id.clone();
         let api_client = api_client.clone();
-        
+    
         Callback::from(move |name: String| {
             let csv_data = (*spreadsheet).export_csv();
-            
+    
             match &*current_id {
                 Some(id) => {
                     // Update existing spreadsheet
                     let id_clone = id.clone();
                     let name_clone = name.clone();
                     let api_client_clone = api_client.clone();
-                    let spreadsheet_clone = spreadsheet.clone();  // Clone here
-                
+                    let spreadsheet_clone = spreadsheet.clone();
+    
                     spawn_local(async move {
-                        // Use the cloned value instead of moving out of the UseStateHandle
                         let csv_content = spreadsheet_clone.export_csv();
-                        
-                        match api_client_clone.update_spreadsheet(&id_clone, Some(name_clone), Some(csv_content)).await {
+    
+                        match api_client_clone
+                            .update_spreadsheet(&id_clone, Some(name_clone), Some(csv_content))
+                            .await
+                        {
                             Ok(_) => web_sys::console::log_1(&"Successfully updated spreadsheet".into()),
                             Err(e) => web_sys::console::error_1(&e),
                         }
                     });
-                },
+                }
                 None => {
                     // Create new spreadsheet
                     let name_clone = name.clone();
                     let api_client_clone = api_client.clone();
                     let current_id_clone = current_id.clone();
-                    
+                    let spreadsheet_clone = spreadsheet.clone();
+
                     spawn_local(async move {
                         match api_client_clone.create_spreadsheet(&name_clone, 20, 10).await {
                             Ok(response) => {
-                                let json_str = response.as_string().unwrap();
-                                let response_obj: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+                                // If response is JsValue (from serde_wasm_bindgen), convert to JSON string
+                                let response_obj: serde_json::Value = if let Some(json_str) = response.as_string() {
+                                    serde_json::from_str(&json_str).unwrap()
+                                } else {
+                                    serde_wasm_bindgen::from_value(response).unwrap()
+                                };
+
                                 let id = response_obj["data"]["id"].as_str().unwrap().to_string();
-                                
-                                current_id_clone.set(Some(id));
+                                current_id_clone.set(Some(id.clone()));
                                 web_sys::console::log_1(&"Successfully created spreadsheet".into());
-                            },
+
+                                // --- Immediately update with current content ---
+                                let spreadsheet_clone2 = spreadsheet_clone.clone();
+                                let api_client_clone2 = api_client_clone.clone();
+                                spawn_local(async move {
+                                    let csv_content = spreadsheet_clone2.export_csv();
+                                    match api_client_clone2.update_spreadsheet(&id, None, Some(csv_content)).await {
+                                        Ok(_) => web_sys::console::log_1(&"Spreadsheet content updated after creation".into()),
+                                        Err(e) => web_sys::console::error_1(&e),
+                                    }
+                                });
+                            }
                             Err(e) => web_sys::console::error_1(&e),
                         }
                     });
@@ -108,35 +147,73 @@ fn app() -> Html {
         })
     };
     
+    
     // Load handler
-    let on_load = {
+    let on_load_by_id = {
         let spreadsheet = spreadsheet.clone();
-        let current_id = current_id.clone();
-        let api_client = api_client.clone();
-        
         Callback::from(move |id: String| {
-            let api_client_clone = api_client.clone();
-            let spreadsheet_clone = spreadsheet.clone();
-            let current_id_clone = current_id.clone();
-            
+            let spreadsheet = spreadsheet.clone();
             spawn_local(async move {
-                match api_client_clone.export_spreadsheet(&id).await {
-                    Ok(csv_data) => {
-                        let mut new_sheet = (*spreadsheet_clone).clone();
-                        if let Err(e) = new_sheet.import_csv(&csv_data) {
-                            web_sys::console::error_1(&JsValue::from_str(&format!("Error importing CSV: {:?}", e)));
-                            return;
+                let url = format!("/api/spreadsheets/{}", id);
+                let resp = match Request::get(&url).send().await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        web_sys::console::error_1(&format!("Failed to fetch spreadsheet: {:?}", e).into());
+                        return;
+                    }
+                };
+                let json: Result<ApiResponse<SpreadsheetData>, _> = resp.json().await;
+                match json {
+                    Ok(api_resp) => {
+                        let csv_content = api_resp.data.content;
+                        let mut new_sheet = (*spreadsheet).clone();
+                        if let Err(e) = new_sheet.import_csv(&csv_content) {
+                            web_sys::console::error_1(&format!("Import error: {:?}", e).into());
+                        } else {
+                            spreadsheet.set(new_sheet);
+                            web_sys::console::log_1(&"Spreadsheet loaded successfully!".into());
                         }
-                        
-                        spreadsheet_clone.set(new_sheet);
-                        current_id_clone.set(Some(id));
-                        web_sys::console::log_1(&"Successfully loaded spreadsheet".into());
-                    },
-                    Err(e) => web_sys::console::error_1(&e),
+                    }
+                    Err(e) => {
+                        web_sys::console::error_1(&format!("JSON parse error: {:?}", e).into());
+                    }
                 }
             });
         })
     };
+
+    let on_load_by_name = {
+        let spreadsheet = spreadsheet.clone();
+        let api_client = api_client.clone();
+        Callback::from(move |name: String| {
+            let spreadsheet = spreadsheet.clone();
+            let api_client = api_client.clone();
+            spawn_local(async move {
+                match api_client.get_spreadsheet_by_name(&name).await {
+                    Ok(js_value) => {
+                        // Deserialize the API response wrapper, not just SpreadsheetData
+                        let api_response: ApiResponse<Option<SpreadsheetData>> = from_value(js_value).unwrap();
+                        if let Some(data) = api_response.data {
+                            let mut new_sheet = (*spreadsheet).clone();
+                            if let Err(e) = new_sheet.import_csv(&data.content) {
+                                web_sys::console::error_1(&format!("Import error: {:?}", e).into());
+                            } else {
+                                spreadsheet.set(new_sheet);
+                                web_sys::console::log_1(&"Spreadsheet loaded by name!".into());
+                            }
+                        } else {
+                            web_sys::console::error_1(&"No spreadsheet data returned from API".into());
+                        }
+                    }
+                    Err(e) => {
+                        web_sys::console::error_1(&format!("Load by name error: {:?}", e).into());
+                    }
+                }
+            });
+        })
+    };
+    
+    
     
     let on_cell_change = {
         let spreadsheet = spreadsheet.clone();
@@ -200,7 +277,7 @@ fn app() -> Html {
                 on_import={on_import}
                 on_export={on_export}
                 on_save={on_save}
-                on_load={on_load}
+                on_load_by_name={on_load_by_name.clone()}
                 on_list_spreadsheets={on_list_spreadsheets}
             />
             <SpreadsheetGrid 
@@ -208,6 +285,7 @@ fn app() -> Html {
                 cols={10}
                 spreadsheet={(*spreadsheet).clone()}
                 on_change={on_cell_change}
+                on_load_by_name={on_load_by_name.clone()}
             />
         </div>
     }

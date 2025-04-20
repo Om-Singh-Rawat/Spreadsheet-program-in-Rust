@@ -11,6 +11,8 @@ pub struct SpreadsheetProps {
     pub cols: usize,
     pub spreadsheet: WasmSheet,  // Add this to receive the spreadsheet from parent
     pub on_change: Callback<(usize, usize, String)>,  // Add callback to update parent's state
+    #[prop_or_default]
+    pub on_load_by_name: Callback<String>,
 }
 
 #[function_component(SpreadsheetGrid)]
@@ -108,6 +110,7 @@ pub fn spreadsheet_grid(props: &SpreadsheetProps) -> Html {
             is_editing.set(false);
         })
     };
+    
 
 
     html! {

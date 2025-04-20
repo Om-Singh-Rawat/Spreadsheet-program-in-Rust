@@ -16,6 +16,7 @@ fn rocket() -> _ {
         .mount("/", FileServer::from(relative!("static")))
         .mount("/api", routes![
             list_spreadsheets,
+            get_spreadsheet_by_name,
             get_spreadsheet,
             create_spreadsheet,
             update_spreadsheet,

@@ -6,12 +6,14 @@ use core::spreadsheet::Spreadsheet;
 
 pub struct Storage {
     spreadsheets: RwLock<HashMap<String, SpreadsheetData>>,
+    name_to_id: RwLock<HashMap<String, String>>, 
 }
 
 impl Storage {
     pub fn new() -> Self {
         Storage {
             spreadsheets: RwLock::new(HashMap::new()),
+            name_to_id: RwLock::new(HashMap::new()), 
         }
     }
 
@@ -32,54 +34,88 @@ impl Storage {
         spreadsheets.get(id).cloned()
     }
 
+    pub fn get_by_name(&self, name: &str) -> Option<SpreadsheetData> {
+        let name_index = self.name_to_id.read().unwrap();
+        name_index.get(name)
+            .and_then(|id| self.spreadsheets.read().unwrap().get(id).cloned())
+    }
+
     pub fn create_spreadsheet(&self, name: String, rows: usize, cols: usize) -> SpreadsheetData {
         let id = Uuid::new_v4().to_string();
+        let name_clone = name.clone(); // Clone name before move
+        
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
-        // Create a new empty spreadsheet
+    
         let sheet = Spreadsheet::new(rows, cols);
         let csv_content = sheet.export_csv();
-        
+    
+        // Create spreadsheet with original name
         let spreadsheet = SpreadsheetData {
             id: id.clone(),
-            name,
+            name, // name moved here
             content: csv_content,
             created_at: now,
             updated_at: now,
         };
-        
+    
+        // Insert into main storage with cloned ID
         let mut spreadsheets = self.spreadsheets.write().unwrap();
-        spreadsheets.insert(id, spreadsheet.clone());
-        
+        spreadsheets.insert(id.clone(), spreadsheet.clone());
+    
+        // Insert into name index with cloned values
+        let mut name_index = self.name_to_id.write().unwrap();
+        name_index.insert(name_clone, id.clone());
+    
         spreadsheet
     }
+    
 
     pub fn update_spreadsheet(&self, id: &str, name: Option<String>, content: Option<String>) -> Option<SpreadsheetData> {
         let mut spreadsheets = self.spreadsheets.write().unwrap();
         
         if let Some(spreadsheet) = spreadsheets.get_mut(id) {
+            let mut name_index = self.name_to_id.write().unwrap();
+            let mut old_name = None;
+    
+            // Handle name changes first
+            if let Some(new_name) = &name {
+                // Track old name for index update
+                old_name = Some(spreadsheet.name.clone());
+                // Update the spreadsheet name
+                spreadsheet.name = new_name.clone();
+            }
+    
+            // Update content if provided
+            if let Some(new_content) = &content {
+                spreadsheet.content = new_content.clone();
+            }
+    
+            // Update timestamps
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs();
-            
-            if let Some(new_name) = name {
-                spreadsheet.name = new_name;
-            }
-            
-            if let Some(new_content) = content {
-                spreadsheet.content = new_content;
-            }
-            
             spreadsheet.updated_at = now;
-            return Some(spreadsheet.clone());
+    
+            // Update name-to-ID mapping
+            if let Some(old_name) = old_name {
+                // Remove old name entry
+                name_index.remove(&old_name);
+            }
+            if name.is_some() {
+                // Insert new name entry
+                name_index.insert(spreadsheet.name.clone(), id.to_string());
+            }
+    
+            Some(spreadsheet.clone())
+        } else {
+            None
         }
-        
-        None
     }
+    
 
     pub fn delete_spreadsheet(&self, id: &str) -> bool {
         let mut spreadsheets = self.spreadsheets.write().unwrap();
