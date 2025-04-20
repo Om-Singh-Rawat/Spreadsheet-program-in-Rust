@@ -79,19 +79,19 @@ impl Spreadsheet {
         if !self.output_enabled {
             return;
         }
-        print!("{:<4}", "");
+        print!("{:<6}", "");
         for j in self.view_left..(self.view_left + 10).min(self.cols) {
-            print!("{:<4}", Self::column_index_to_label(j));
+            print!("{:<6}", Self::column_index_to_label(j));
         }
         println!();
 
         for i in self.view_top..(self.view_top + 10).min(self.rows) {
-            print!("{:<4}", i + 1);
+            print!("{:<6}", i + 1);
             for j in self.view_left..(self.view_left + 10).min(self.cols) {
                 if let Some(_) = self.errors.get(&(i, j)) {
-                    print!("{:<4}", "ERR");
+                    print!("{:<6}", "ERR");
                 } else {
-                    print!("{:<4}", self.grid[i][j]);
+                    print!("{:<6}", self.grid[i][j]);
                 }
             }
             println!();
@@ -198,7 +198,17 @@ impl Spreadsheet {
                 let (op_pos, op_char) = operator_pos.unwrap();
                 let left = trimmed[..op_pos].trim();
                 let right = trimmed[op_pos + 1..].trim();
-    
+                
+                // Handle unary minus case
+                if op_char == '-' && left.is_empty() {
+                    let right_expr = self.parse_operand(right)?;
+                    return Ok(Expression::BinaryOp(
+                        Box::new(Expression::Literal(0)),
+                        '-',
+                        Box::new(right_expr),
+                    ));
+                }
+
                 if left.is_empty() || right.is_empty() {
                     return Err("missing operand(s)".to_string());
                 }
