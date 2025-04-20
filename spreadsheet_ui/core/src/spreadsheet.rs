@@ -893,15 +893,21 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
         let mut wtr = csv::WriterBuilder::new()
             .delimiter(b',')
             .from_writer(vec![]);
-            
+    
         for row in 0..self.rows {
             let mut record = vec![];
             for col in 0..self.cols {
-                record.push(self.get_cell_content(row, col));
+                // Convert Option<i32> to String
+                let cell_str = match self.get_cell_value(row, col) {
+                    Some(val) => val.to_string(),
+                    None => "".to_string(),
+                };
+                record.push(cell_str);
             }
             wtr.write_record(&record).unwrap();
         }
         String::from_utf8(wtr.into_inner().unwrap()).unwrap()
     }
+    
 }
 

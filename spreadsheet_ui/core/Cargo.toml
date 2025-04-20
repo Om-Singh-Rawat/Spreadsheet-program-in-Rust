@@ -3,6 +3,9 @@ name = "core"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+path = "src/lib.rs"
+
 [features]
 cli = []    # optional CLI entrypoint
 wasm = ["wasm-bindgen", "console_error_panic_hook"]   # enable wasm-bindgen exports

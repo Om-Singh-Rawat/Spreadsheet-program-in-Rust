@@ -13,7 +13,7 @@ pub fn status_bar(props: &StatusBarProps) -> Html {
     let cell_ref = match &props.selected_cell {
         Some((row, col)) => format!(
             "{}{}",
-            core::spreadsheet::Spreadsheet::column_index_to_label(*col),
+            spreadsheet_core::spreadsheet::Spreadsheet::column_index_to_label(*col),
             row + 1
         ),
         None => "".to_string(),

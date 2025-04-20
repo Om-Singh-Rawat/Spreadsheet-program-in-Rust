@@ -1,9 +1,9 @@
 use crate::components::cell::Cell;
 use crate::components::status_bar::StatusBar;
-use core::spreadsheet::Spreadsheet;
+use spreadsheet_core::spreadsheet::Spreadsheet;
 use yew::prelude::*;
 use wasm_bindgen::prelude::*;
-use core::wasm::WasmSheet;  
+use spreadsheet_core::wasm::WasmSheet;  
 
 #[derive(Properties, PartialEq)]
 pub struct SpreadsheetProps {
