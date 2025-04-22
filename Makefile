@@ -1,27 +1,32 @@
 # Makefile for the Rust Spreadsheet Project
 
-# Report files
+# ===== File Paths =====
 REPORT_SRC = report/report.tex
 REPORT_PDF = report/report.pdf
 
-# Default target: build the release binary
+# ===== Build Targets =====
 all: build
 
-# Build the release binary (output stays in target/release/)
 build:
 	cargo build --release
 
-# Run tests from the tests/ folder
+run:
+	cargo run --release -- 999 18278
+
+# ===== Code Quality =====
+lint:
+	cargo fmt --check && cargo clippy -- -D warnings
+
 test:
 	cargo test
 
-# Generate the PDF report from LaTeX
+# ===== Report Generation =====
 report: $(REPORT_PDF)
 
 $(REPORT_PDF): $(REPORT_SRC)
 	pdflatex -output-directory=report $(REPORT_SRC)
 
-# Clean build artifacts and generated files
+# ===== Clean-Up =====
 clean:
 	cargo clean
 	rm -f report/*.aux report/*.log report/*.pdf
