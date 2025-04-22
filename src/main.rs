@@ -79,19 +79,19 @@ impl Spreadsheet {
         if !self.output_enabled {
             return;
         }
-        print!("{:<6}", "");
+        print!("{:<6} ", "");
         for j in self.view_left..(self.view_left + 10).min(self.cols) {
-            print!("{:<6}", Self::column_index_to_label(j));
+            print!("{:<6} ", Self::column_index_to_label(j));
         }
         println!();
 
         for i in self.view_top..(self.view_top + 10).min(self.rows) {
-            print!("{:<6}", i + 1);
+            print!("{:<6} ", i + 1);
             for j in self.view_left..(self.view_left + 10).min(self.cols) {
                 if let Some(_) = self.errors.get(&(i, j)) {
-                    print!("{:<6}", "ERR");
+                    print!("{:<6} ", "ERR");
                 } else {
-                    print!("{:<6}", self.grid[i][j]);
+                    print!("{:<6} ", self.grid[i][j]);
                 }
             }
             println!();
