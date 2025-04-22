@@ -12,7 +12,7 @@ enum Expression {
 enum FunctionArg {
     Range((usize, usize), (usize, usize)), // ((row1, col1), (row2, col2))
     #[allow(dead_code)]
-    Cell(usize, usize),                    // (row, col)
+    Cell(usize, usize), // (row, col)
     #[allow(dead_code)]
     Literal(i32),
 }
@@ -25,7 +25,7 @@ struct Spreadsheet {
     view_left: usize,
     output_enabled: bool,
     cell_expressions: HashMap<(usize, usize), Expression>,
-    dependencies: HashMap<(usize, usize), HashSet<(usize, usize)>>,       // For each cell, which cells it depends on.
+    dependencies: HashMap<(usize, usize), HashSet<(usize, usize)>>, // For each cell, which cells it depends on.
     reverse_dependencies: HashMap<(usize, usize), HashSet<(usize, usize)>>, // For each cell, which cells depend on it.
     errors: HashMap<(usize, usize), String>, // Cells with errors (display "ERR")
     total_sleep_secs: u64,
@@ -88,7 +88,7 @@ impl Spreadsheet {
         for i in self.view_top..(self.view_top + 10).min(self.rows) {
             print!("{:<6} ", i + 1);
             for j in self.view_left..(self.view_left + 10).min(self.cols) {
-                if let Some(_) = self.errors.get(&(i, j)) {
+                if self.errors.contains_key(&(i, j)) {
                     print!("{:<6} ", "ERR");
                 } else {
                     print!("{:<6} ", self.grid[i][j]);
@@ -124,7 +124,8 @@ impl Spreadsheet {
 
     fn parse_operand(&self, operand: &str) -> Result<Expression, String> {
         let operand = operand.trim();
-        operand.parse::<i32>()
+        operand
+            .parse::<i32>()
             .map(Expression::Literal)
             .or_else(|_| {
                 if let Some((r, c)) = Self::parse_cell_reference(operand) {
@@ -135,37 +136,40 @@ impl Spreadsheet {
                         Ok(Expression::Cell(r, c))
                     }
                 } else {
-                    Err(format!("'{}' is not a valid integer or cell reference", operand))
+                    Err(format!(
+                        "'{}' is not a valid integer or cell reference",
+                        operand
+                    ))
                 }
             })
     }
 
     fn parse_expression(&self, expr: &str) -> Result<Expression, String> {
         let trimmed = expr.trim();
-    
+
         if let Some(open_paren) = trimmed.find('(') {
             if !trimmed.ends_with(')') {
                 return Err("invalid function declaration".to_string());
             }
-    
+
             let func_name = trimmed[..open_paren].trim();
             if func_name.is_empty() {
                 return Err("empty function name".to_string());
             }
-    
+
             if !func_name.chars().all(|c| c.is_ascii_alphabetic()) {
                 return Err(format!("invalid function name: '{}'", func_name));
             }
-    
+
             let func_name_upper = func_name.to_uppercase();
             let supported = ["SUM", "AVG", "MIN", "MAX", "STDEV", "SLEEP"];
             if !supported.contains(&func_name_upper.as_str()) {
                 return Err(format!("unknown function: '{}'", func_name_upper));
             }
-    
-            let arg = trimmed[open_paren+1..trimmed.len()-1].trim();
+
+            let arg = trimmed[open_paren + 1..trimmed.len() - 1].trim();
             let func_arg = self.parse_function_argument(arg)?;
-    
+
             match func_name_upper.as_str() {
                 "SUM" | "AVG" | "MIN" | "MAX" | "STDEV" => {
                     if !matches!(func_arg, FunctionArg::Range(..)) {
@@ -177,28 +181,27 @@ impl Spreadsheet {
                         return Err("SLEEP requires a cell reference or integer".to_string());
                     }
                 }
-                _ => unreachable!()
+                _ => unreachable!(),
             }
-    
+
             Ok(Expression::Function(func_name_upper, arg.to_string()))
-        
         } else {
             let operators = ['+', '-', '*', '/'];
             let mut operator_pos = None;
             let mut operator_count = 0;
-    
+
             for (i, c) in trimmed.chars().enumerate() {
                 if operators.contains(&c) {
                     operator_count += 1;
                     operator_pos = Some((i, c));
                 }
             }
-    
+
             if operator_count == 1 {
                 let (op_pos, op_char) = operator_pos.unwrap();
                 let left = trimmed[..op_pos].trim();
                 let right = trimmed[op_pos + 1..].trim();
-                
+
                 // Handle unary minus case
                 if op_char == '-' && left.is_empty() {
                     let right_expr = self.parse_operand(right)?;
@@ -212,22 +215,22 @@ impl Spreadsheet {
                 if left.is_empty() || right.is_empty() {
                     return Err("missing operand(s)".to_string());
                 }
-    
+
                 let left_expr = self.parse_operand(left)?;
                 let right_expr = self.parse_operand(right)?;
-    
+
                 return Ok(Expression::BinaryOp(
                     Box::new(left_expr),
                     op_char,
                     Box::new(right_expr),
                 ));
             }
-    
+
             if operator_count == 0 {
                 if let Ok(num) = trimmed.parse::<i32>() {
                     return Ok(Expression::Literal(num));
                 }
-    
+
                 if let Some((r, c)) = Self::parse_cell_reference(trimmed) {
                     if r >= self.rows || c >= self.cols {
                         let label = format!("{}{}", Self::column_index_to_label(c), r + 1);
@@ -235,14 +238,14 @@ impl Spreadsheet {
                     }
                     return Ok(Expression::Cell(r, c));
                 }
-    
+
                 if trimmed.is_empty() {
                     return Err("expression is empty".to_string());
                 }
-    
+
                 return Err(format!("'{}' is not a valid expression", trimmed));
             }
-    
+
             Err("expressions can only contain one operator".to_string())
         }
     }
@@ -254,7 +257,7 @@ impl Spreadsheet {
     /// For SUM functions, if the argument decodes to a range, all cells in that range are added.
     fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
         let mut deps = HashSet::new();
-    
+
         fn recurse(expr: &Expression, deps: &mut HashSet<(usize, usize)>) {
             match expr {
                 Expression::Cell(r, c) => {
@@ -264,41 +267,43 @@ impl Spreadsheet {
                     recurse(left, deps);
                     recurse(right, deps);
                 }
-                Expression::Function(name, arg) => {
-                    match name.as_str() {
-                        "SUM" | "MIN" | "MAX" | "AVG" | "STDEV" => {
-                            if let Ok(FunctionArg::Range((r1, c1), (r2, c2))) = 
-                                Spreadsheet::parse_function_argument_static(arg) 
-                            {
-                                for row in r1.min(r2)..=r1.max(r2) {
-                                    for col in c1.min(c2)..=c1.max(c2) {
-                                        deps.insert((row, col));
-                                    }
+                Expression::Function(name, arg) => match name.as_str() {
+                    "SUM" | "MIN" | "MAX" | "AVG" | "STDEV" => {
+                        if let Ok(FunctionArg::Range((r1, c1), (r2, c2))) =
+                            Spreadsheet::parse_function_argument_static(arg)
+                        {
+                            for row in r1.min(r2)..=r1.max(r2) {
+                                for col in c1.min(c2)..=c1.max(c2) {
+                                    deps.insert((row, col));
                                 }
                             }
                         }
-                        "SLEEP" => {
-                            if let Ok(FunctionArg::Cell(r, c)) = 
-                                Spreadsheet::parse_function_argument_static(arg) 
-                            {
-                                deps.insert((r, c));
-                            }
-                        }
-                        _ => {}
                     }
-                }
+                    "SLEEP" => {
+                        if let Ok(FunctionArg::Cell(r, c)) =
+                            Spreadsheet::parse_function_argument_static(arg)
+                        {
+                            deps.insert((r, c));
+                        }
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
         }
-    
+
         recurse(expr, &mut deps);
         deps
     }
-    
+
     /// Update dependencies for a given cell:
     /// Remove the old dependencies, then extract from the new expression and update both
     /// forward and reverse dependency maps.
-    fn update_dependencies(&mut self, cell: (usize, usize), expr: &Expression) -> Result<(), String> {
+    fn update_dependencies(
+        &mut self,
+        cell: (usize, usize),
+        expr: &Expression,
+    ) -> Result<(), String> {
         // Remove old reverse dependencies for this cell.
         if let Some(old_deps) = self.dependencies.get(&cell) {
             for dep in old_deps {
@@ -311,7 +316,10 @@ impl Spreadsheet {
         // Extract new dependencies from the expression.
         let new_deps = Self::extract_dependencies(expr);
         for dep in &new_deps {
-            self.reverse_dependencies.entry(*dep).or_default().insert(cell);
+            self.reverse_dependencies
+                .entry(*dep)
+                .or_default()
+                .insert(cell);
         }
         self.dependencies.insert(cell, new_deps);
         Ok(())
@@ -419,9 +427,9 @@ impl Spreadsheet {
     fn recalculate_dependents(&mut self, cell: (usize, usize)) -> Result<(), String> {
         // Reset total sleep time for this recalculation run
         self.total_sleep_secs = 0;
-    
+
         let sorted_cells = self.topological_order(cell);
-    
+
         for current in sorted_cells {
             // Propagate error: if any direct dependency has an error, mark this cell as error.
             if let Some(deps) = self.dependencies.get(&current) {
@@ -438,7 +446,7 @@ impl Spreadsheet {
                     continue;
                 }
             }
-    
+
             // Fetch the expression early to avoid borrow conflict
             let expr_opt = self.cell_expressions.get(&current).cloned();
             if let Some(expr) = expr_opt {
@@ -454,19 +462,16 @@ impl Spreadsheet {
                 }
             }
         }
-    
+
         // Sleep once after all evaluations
         if self.total_sleep_secs > 0 {
             self.last_sleep_time = self.total_sleep_secs;
             std::thread::sleep(std::time::Duration::from_secs(self.total_sleep_secs));
             self.total_sleep_secs = 0;
         }
-    
+
         Ok(())
     }
-    
-    
-    
 
     // --- End Dependency Methods ---
 
@@ -474,11 +479,10 @@ impl Spreadsheet {
     fn evaluate_expression(&mut self, expr: &Expression) -> Result<i32, String> {
         match expr {
             Expression::Literal(v) => Ok(*v),
-            Expression::Cell(r, c) => self.get_cell_value(*r, *c)
-                .ok_or_else(|| {
-                    let col_label = Self::column_index_to_label(*c);
-                    format!("invalid cell reference {}{}", col_label, r + 1)
-                }),
+            Expression::Cell(r, c) => self.get_cell_value(*r, *c).ok_or_else(|| {
+                let col_label = Self::column_index_to_label(*c);
+                format!("invalid cell reference {}{}", col_label, r + 1)
+            }),
             Expression::BinaryOp(lhs, op, rhs) => {
                 let left_val = self.evaluate_expression(lhs)?;
                 let right_val = self.evaluate_expression(rhs)?;
@@ -510,16 +514,16 @@ impl Spreadsheet {
 
     fn parse_function_argument_static(arg: &str) -> Result<FunctionArg, String> {
         let trimmed = arg.trim();
-    
+
         if let Some(colon_pos) = trimmed.find(':') {
             let (start, end) = trimmed.split_at(colon_pos);
             let end = &end[1..];
-    
+
             let start_pos = Self::parse_cell_reference(start)
                 .ok_or_else(|| format!("Invalid start cell: '{}'", start))?;
             let end_pos = Self::parse_cell_reference(end)
                 .ok_or_else(|| format!("Invalid end cell: '{}'", end))?;
-    
+
             Ok(FunctionArg::Range(start_pos, end_pos))
         } else if let Some((row, col)) = Self::parse_cell_reference(trimmed) {
             Ok(FunctionArg::Cell(row, col))
@@ -529,53 +533,52 @@ impl Spreadsheet {
             Err(format!("Invalid function argument: {}", trimmed))
         }
     }
-    
+
     // Keep your original method for use in evaluation contexts
     fn parse_function_argument(&self, arg: &str) -> Result<FunctionArg, String> {
         // First use the static method to parse the argument
         let parsed = Self::parse_function_argument_static(arg)?;
-        
+
         // Then do bounds checking based on the parsed result
         match parsed {
             FunctionArg::Range((start_row, start_col), (end_row, end_col)) => {
                 // Check start cell bounds
                 if start_row >= self.rows || start_col >= self.cols {
-                    let label = format!("{}{}", 
+                    let label = format!(
+                        "{}{}",
                         Self::column_index_to_label(start_col),
                         start_row + 1
                     );
                     return Err(format!("Start cell {} is out of bounds", label));
                 }
-                
+
                 // Check end cell bounds
                 if end_row >= self.rows || end_col >= self.cols {
-                    let label = format!("{}{}", 
-                        Self::column_index_to_label(end_col),
-                        end_row + 1
-                    );
+                    let label = format!("{}{}", Self::column_index_to_label(end_col), end_row + 1);
                     return Err(format!("End cell {} is out of bounds", label));
                 }
-                
+
                 // Check that range is in ascending order
                 if start_row > end_row || start_col > end_col {
                     return Err("Range must be in ascending order".to_string());
                 }
-                
-                Ok(FunctionArg::Range((start_row, start_col), (end_row, end_col)))
-            },
+
+                Ok(FunctionArg::Range(
+                    (start_row, start_col),
+                    (end_row, end_col),
+                ))
+            }
             FunctionArg::Cell(row, col) => {
                 if row >= self.rows || col >= self.cols {
                     let label = format!("{}{}", Self::column_index_to_label(col), row + 1);
                     return Err(format!("Cell {} is out of bounds", label));
                 }
                 Ok(FunctionArg::Cell(row, col))
-            },
+            }
             // Literals don't need bounds checking
             FunctionArg::Literal(val) => Ok(FunctionArg::Literal(val)),
         }
     }
-    
-
 
     // --- Function stubs ---
     fn handle_sleep(&mut self, arg: &str) -> Result<i32, String> {
@@ -584,32 +587,31 @@ impl Spreadsheet {
                 if secs > 0 {
                     self.total_sleep_secs += secs as u64;
                 }
-                Ok(secs)  // even negative values are returned
+                Ok(secs) // even negative values are returned
             }
             FunctionArg::Cell(r, c) => {
-                let val = self.get_cell_value(r, c)
+                let val = self
+                    .get_cell_value(r, c)
                     .ok_or_else(|| "Invalid cell in SLEEP".to_string())?;
-    
+
                 if val > 0 {
                     self.total_sleep_secs += val as u64;
                 }
-                Ok(val)  // return value as-is
+                Ok(val) // return value as-is
             }
             _ => Err("SLEEP expects a number or a cell reference".to_string()),
         }
-
     }
-    
 
     fn handle_sum(&self, arg: &str) -> Result<i32, String> {
         // SAFETY: `parse_expression` already guarantees `arg` is a valid range.
-        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) = 
-            self.parse_function_argument(arg)? 
+        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) =
+            self.parse_function_argument(arg)?
         else {
             // This case is unreachable due to validation in `parse_expression`.
             unreachable!("SUM argument should have been validated as a range during parsing")
         };
-    
+
         let mut sum = 0;
         for row in start_row.min(end_row)..=start_row.max(end_row) {
             for col in start_col.min(end_col)..=start_col.max(end_col) {
@@ -626,12 +628,12 @@ impl Spreadsheet {
 
     fn handle_max(&self, arg: &str) -> Result<i32, String> {
         // Get range from argument
-        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) = 
-            self.parse_function_argument(arg)? 
+        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) =
+            self.parse_function_argument(arg)?
         else {
             unreachable!("MAX argument should have been validated as a range during parsing")
         };
-    
+
         let mut values = Vec::new();
         for row in start_row.min(end_row)..=start_row.max(end_row) {
             for col in start_col.min(end_col)..=start_col.max(end_col) {
@@ -643,22 +645,22 @@ impl Spreadsheet {
                 }
             }
         }
-    
+
         if values.is_empty() {
             return Err("MAX of empty range".to_string());
         }
-    
+
         Ok(*values.iter().max().unwrap())
     }
-    
+
     fn handle_min(&self, arg: &str) -> Result<i32, String> {
         // Get range from argument
-        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) = 
-            self.parse_function_argument(arg)? 
+        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) =
+            self.parse_function_argument(arg)?
         else {
             unreachable!("MIN argument should have been validated as a range during parsing")
         };
-    
+
         let mut values = Vec::new();
         for row in start_row.min(end_row)..=start_row.max(end_row) {
             for col in start_col.min(end_col)..=start_col.max(end_col) {
@@ -670,25 +672,25 @@ impl Spreadsheet {
                 }
             }
         }
-    
+
         if values.is_empty() {
             return Err("MIN of empty range".to_string());
         }
-    
+
         Ok(*values.iter().min().unwrap())
     }
-    
+
     fn handle_avg(&self, arg: &str) -> Result<i32, String> {
         // Get range from argument
-        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) = 
-            self.parse_function_argument(arg)? 
+        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) =
+            self.parse_function_argument(arg)?
         else {
             unreachable!("AVG argument should have been validated as a range during parsing")
         };
-    
+
         let mut sum = 0;
         let mut count = 0;
-        
+
         for row in start_row.min(end_row)..=start_row.max(end_row) {
             for col in start_col.min(end_col)..=start_col.max(end_col) {
                 if let Some(value) = self.get_cell_value(row, col) {
@@ -700,23 +702,23 @@ impl Spreadsheet {
                 }
             }
         }
-    
+
         if count == 0 {
             return Err("AVG of empty range".to_string());
         }
-    
+
         // Integer division (truncating)
         Ok(sum / count)
     }
-    
+
     fn handle_stdev(&self, arg: &str) -> Result<i32, String> {
         // Get range from argument
-        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) = 
-            self.parse_function_argument(arg)? 
+        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) =
+            self.parse_function_argument(arg)?
         else {
             unreachable!("STDEV argument should have been validated as a range during parsing")
         };
-    
+
         // Collect all values
         let mut values = Vec::new();
         for row in start_row.min(end_row)..=start_row.max(end_row) {
@@ -729,27 +731,28 @@ impl Spreadsheet {
                 }
             }
         }
-    
+
         if values.len() <= 1 {
             return Err("STDEV needs at least two values".to_string());
         }
-    
+
         // Calculate mean
         let sum: i32 = values.iter().sum();
         let mean = sum as f64 / values.len() as f64;
-    
+
         // Calculate variance
-        let variance = values.iter()
+        let variance = values
+            .iter()
             .map(|&x| {
                 let diff = x as f64 - mean;
                 diff * diff
             })
-            .sum::<f64>() / (values.len() - 1) as f64;
-    
+            .sum::<f64>()
+            / (values.len() - 1) as f64;
+
         // Return standard deviation as integer (rounded)
         Ok(variance.sqrt().round() as i32)
     }
-    
 
     // --- Assignment & Dependency Methods (with cycle detection and recalculation) ---
     fn handle_assignment(&mut self, input: &str) -> Result<(), String> {
@@ -757,35 +760,39 @@ impl Spreadsheet {
         if parts.len() != 2 {
             return Err("unrecognized cmd".to_string());
         }
-    
+
         let cell_ref = parts[0].trim();
         let expr = parts[1].trim();
-    
+
         let (target_row, target_col) = Self::parse_cell_reference(cell_ref)
             .ok_or_else(|| format!("invalid cell format: '{}'", cell_ref))?;
-    
+
         if target_row >= self.rows || target_col >= self.cols {
             return Err("target cell out of bounds".to_string());
         }
-    
+
         let parsed_expr = self.parse_expression(expr)?;
-    
+
         // Extract new dependencies
         let new_deps = Self::extract_dependencies(&parsed_expr);
-    
+
         // Check for cycles
         if self.detect_cycle((target_row, target_col), &new_deps) {
             return Err("cycle detected".to_string());
         }
-    
+
         // Store new expression and update dependencies
-        self.cell_expressions.insert((target_row, target_col), parsed_expr.clone());
-    
+        self.cell_expressions
+            .insert((target_row, target_col), parsed_expr.clone());
+
         // Update the dependencies, and handle cycle detection here
-        if let Err(_) = self.update_dependencies((target_row, target_col), &parsed_expr) {
+        if self
+            .update_dependencies((target_row, target_col), &parsed_expr)
+            .is_err()
+        {
             return Err("cycle detected".to_string()); // Return early on cycle detection
         }
-    
+
         // Evaluate expression and handle errors
         let value = match self.evaluate_expression(&parsed_expr) {
             Ok(val) => {
@@ -797,47 +804,45 @@ impl Spreadsheet {
                 0 // Use a fallback value for grid when an error occurs
             }
         };
-    
+
         // Update the grid cell with the evaluated value or error
         self.update_cell(target_row, target_col, value);
-    
+
         // Force recalculation of dependents, even if value didn't change
         let _ = self.recalculate_dependents((target_row, target_col));
-    
+
         Ok(()) // Always return Ok unless cycle detected
     }
-    
-    
+
     fn scroll(&mut self, dir: &str) {
         match dir {
             // Scroll up if possible
             "w" => {
                 self.view_top = self.view_top.saturating_sub(10);
             }
-    
+
             // Scroll down only if we are showing fewer than 10 rows at the bottom
             "s" => {
                 if self.view_top + 10 < self.rows {
                     self.view_top = (self.view_top + 10).min(self.rows - 10);
                 }
             }
-    
+
             // Scroll left if possible
             "a" => {
                 self.view_left = self.view_left.saturating_sub(10);
             }
-    
+
             // Scroll right only if we are showing fewer than 10 columns at the right
             "d" => {
                 if self.view_left + 10 < self.cols {
                     self.view_left = (self.view_left + 10).min(self.cols - 10);
                 }
             }
-    
+
             _ => {}
         }
     }
-    
 
     fn handle_scroll_to(&mut self, input: &str) -> Result<(), String> {
         let parts: Vec<&str> = input.split_whitespace().collect();
@@ -896,7 +901,7 @@ fn main() {
         sheet.print_grid();
         print!("[{}.0] ({}) > ", sheet.last_sleep_time, last_status);
         sheet.last_sleep_time = 0;
-        io::stdout().flush().unwrap(); 
+        io::stdout().flush().unwrap();
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
         let input = input.trim();
