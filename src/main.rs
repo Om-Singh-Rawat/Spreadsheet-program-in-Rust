@@ -1038,6 +1038,16 @@ mod tests {
     }
 
     #[test]
+    fn test_enable_disable_output() {
+        let mut sheet = create_sheet(5, 5);
+        assert!(sheet.process_input("disable_output").is_ok());
+        assert!(!sheet.output_enabled);
+
+        assert!(sheet.process_input("enable_output").is_ok());
+        assert!(sheet.output_enabled);
+    }
+
+    #[test]
     fn test_scroll_commands() {
         let mut sheet = create_sheet(20, 20);
         sheet.view_top = 0;
@@ -1074,9 +1084,17 @@ mod tests {
         assert_eq!(sheet.view_top, 4);
         assert_eq!(sheet.view_left, 1);
 
+        let result = sheet.process_input("scroll_to");
+        assert_eq!(result.unwrap_err(), "Usage: scroll_to <cell>");
+
         // Invalid scroll_to
         let result = sheet.process_input("scroll_to Z100");
         assert!(result.is_err());
+
+        let result = sheet.process_input("scroll_to invalid_cell");
+        assert_eq!(result.unwrap_err(), "invalid cell reference in scroll_to");
+
+        
     }
 
     #[test]
@@ -1094,9 +1112,81 @@ mod tests {
     #[test]
     fn test_parse_cell_reference() {
         assert_eq!(Spreadsheet::parse_cell_reference("A1"), Some((0, 0)));
+        assert_eq!(Spreadsheet::parse_cell_reference("A0"), None);
         assert_eq!(Spreadsheet::parse_cell_reference("B5"), Some((4, 1)));
         assert_eq!(Spreadsheet::parse_cell_reference("AA10"), Some((9, 26)));
         assert_eq!(Spreadsheet::parse_cell_reference("invalid"), None);
+    }
+
+    #[test]
+    fn test_parse_operand_cell_out_of_bounds() {
+        let mut sheet = create_sheet(5, 5); // 5x5 grid: rows 0–4, cols 0–4
+
+        // This cell is in correct format but out of bounds (row 1000)
+        let result = sheet.process_input("A1000 = 5");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "target cell out of bounds");
+    }
+
+    #[test]
+    fn test_parse_expression_edge_cases() {
+        let mut sheet = create_sheet(5, 5);
+
+        // Integer literal
+        assert!(sheet.process_input("A1 = 42").is_ok());
+
+        // Valid cell reference
+        assert!(sheet.process_input("A1 = B1").is_ok());
+
+        // Binary operation
+        assert!(sheet.process_input("A1 = B1 + C1").is_ok());
+
+        // Unary minus
+        assert!(sheet.process_input("A1 = -5").is_ok());
+
+        // Invalid: multiple operators
+        assert!(sheet.process_input("A1 = 5 + 3 * 2").is_err());
+
+        // Invalid: empty
+        assert!(sheet.process_input("A1 = ").is_err());
+
+        // Invalid: malformed cell
+        assert!(sheet.process_input("A1 = B").is_err());
+    }
+
+    #[test]
+    fn test_extract_and_update_dependencies() {
+        let mut sheet = create_sheet(5, 5);
+        sheet.process_input("A1 = 5").unwrap();
+        sheet.process_input("B1 = A1 + A1").unwrap();
+
+        let deps = sheet.dependencies.get(&(0, 1)).unwrap();
+        assert_eq!(deps.len(), 1); // Set should not duplicate (A1 only once)
+    }
+
+    #[test]
+    fn test_stdev_invalid_and_empty_range() {
+        let mut sheet = create_sheet(5, 5);
+
+        let result = sheet.process_input("A1 = SUM(A1:A3");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "invalid function declaration");
+
+        // STDEV with one element
+        sheet.process_input("A1 = 5").unwrap();
+        let result = sheet.process_input("B1 = STDEV(A1:A1)");
+        assert!(result.is_ok());
+        assert_eq!(sheet.get_cell_value(0, 1), Some(0));
+
+        // STDEV with empty range
+        let result = sheet.process_input("B2 = STDEV()");
+        assert!(result.is_err());
+
+        let result = sheet.process_input("A1 = (A1:A3)");
+        assert_eq!(result.unwrap_err(), "empty function name");
+
+        let result = sheet.process_input("A1 = S@M(A1:A3)");
+        assert_eq!(result.unwrap_err(), "invalid function name: 'S@M'");
     }
 
     #[test]
@@ -1113,6 +1203,12 @@ mod tests {
         // Invalid cell reference
         let result = sheet.process_input("Z100 = 5");
         assert!(result.is_err());
+
+        let result = sheet.process_input("B1 = AVG(A6:A10)"); // Row 5 (0-based) is beyond 4
+        assert_eq!(result.unwrap_err(), "Start cell A6 is out of bounds");
+
+        let result = sheet.process_input("B1 = SUM(A1:F1)"); // F1 is column 5
+        assert_eq!(result.unwrap_err(), "End cell F1 is out of bounds");
 
         // Invalid expression
         let result = sheet.process_input("A1 = 5 + ");
@@ -1139,6 +1235,15 @@ mod tests {
         // Error should propagate through functions
         sheet.process_input("B2 = SUM(A3:A3)").unwrap();
         assert!(sheet.errors.contains_key(&(1, 1)));
+    }
+
+    #[test]
+    fn test_fallback_value_on_error() {
+        let mut sheet = create_sheet(5, 5);
+        sheet.process_input("A1 = 10").unwrap();
+        sheet.process_input("A2 = 0").unwrap();
+        sheet.process_input("A3 = A1 / A2").unwrap(); // division by zero
+        assert_eq!(sheet.get_cell_value(2, 0), Some(0));
     }
 
     #[test]
@@ -1298,7 +1403,7 @@ mod tests {
 
         // STDEV with insufficient values
         sheet.process_input("A1 = 5").unwrap();
-        let _result = sheet.process_input("B1 = STDEV(A1:A1)");
+        let result = sheet.process_input("B1 = STDEV(A1:A1)");
         assert_eq!(sheet.get_cell_value(0, 1), Some(0));
 
         // Function case insensitivity
@@ -1310,7 +1415,8 @@ mod tests {
         // Multiple operators (not allowed)
         let result = sheet.process_input("A1 = 5 + 3 * 2");
         assert!(result.is_err());
-    }
+
+        }
 
     #[test]
     fn test_scroll_boundary_conditions() {
@@ -1339,5 +1445,27 @@ mod tests {
         assert_eq!(sheet.get_cell_value(0, 1), Some(10));
         assert_eq!(sheet.get_cell_value(0, 2), Some(10));
         assert_eq!(sheet.get_cell_value(0, 3), Some(10));
+    }
+
+    #[test]
+    fn test_binary_operations() {
+        let mut sheet = create_sheet(5, 5);
+        // Addition
+        sheet.process_input("A1 = 2").unwrap();
+        sheet.process_input("A2 = 3").unwrap();
+        sheet.process_input("B1 = A1 + A2").unwrap();
+        assert_eq!(sheet.get_cell_value(0, 1), Some(5));
+
+        // Subtraction
+        sheet.process_input("B2 = A2 - A1").unwrap();
+        assert_eq!(sheet.get_cell_value(1, 1), Some(1));        
+
+        // Multiplication
+        sheet.process_input("B3 = A1 * A2").unwrap();
+        assert_eq!(sheet.get_cell_value(2, 1), Some(6));
+
+        // Division
+        sheet.process_input("B4 = A2 / A1").unwrap();
+        assert_eq!(sheet.get_cell_value(3, 1), Some(1));
     }
 }
