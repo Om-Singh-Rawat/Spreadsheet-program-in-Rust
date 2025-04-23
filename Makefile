@@ -19,7 +19,7 @@ lint:
 # ===== Testing =====
 # Run integration tests in the `tests/` directory (ignores main.rs unit tests)
 test:
-	cargo test --test test -- --test-threads=1
+	cargo test --test integration
 
 # Run unit tests with tarpaulin for coverage (only for main.rs, excluding GUI)
 coverage:

@@ -1298,7 +1298,7 @@ mod tests {
 
         // STDEV with insufficient values
         sheet.process_input("A1 = 5").unwrap();
-        let result = sheet.process_input("B1 = STDEV(A1:A1)");
+        let _result = sheet.process_input("B1 = STDEV(A1:A1)");
         assert_eq!(sheet.get_cell_value(0, 1), Some(0));
 
         // Function case insensitivity
