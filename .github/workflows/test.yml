@@ -17,4 +17,4 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
 
       - name: Run only integration tests
-        run: cargo test --test test -- --test-threads=1
+        run: cargo test --test integration
