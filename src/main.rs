@@ -1086,9 +1086,7 @@ mod tests {
         assert!(result.is_err());
 
         let result = sheet.process_input("scroll_to invalid_cell");
-        assert_eq!(result.unwrap_err(), "invalid cell reference in scroll_to");
-
-        
+        assert_eq!(result.unwrap_err(), "invalid cell reference in scroll_to");   
     }
 
     #[test]
@@ -1120,7 +1118,6 @@ mod tests {
         let result = sheet.process_input("A1000 = 5");
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "target cell out of bounds");
-
         }
 
     #[test]
