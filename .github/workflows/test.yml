@@ -11,11 +11,9 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Set up Rust
-        uses: actions/setup-rust@v1
-        with:
-          rust-version: stable
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Install dependencies (if needed)
+      - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
 
       - name: Run only integration tests
