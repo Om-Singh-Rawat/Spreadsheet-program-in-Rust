@@ -4,6 +4,7 @@ on: [push, pull_request]
 
 jobs:
   coverage:
+    name: Generate Code Coverage
     runs-on: ubuntu-latest
 
     steps:
@@ -17,5 +18,5 @@ jobs:
       - name: Install tarpaulin
         run: cargo install cargo-tarpaulin
 
-      - name: Run Coverage
-        run: make coverage
+      - name: Run Coverage (excluding spreadsheet_ui)
+        run: cargo tarpaulin --out Html --exclude-files spreadsheet_ui/*

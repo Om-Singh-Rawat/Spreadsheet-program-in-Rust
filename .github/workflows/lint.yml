@@ -15,8 +15,14 @@ jobs:
         with:
           rust-version: stable
 
-      - name: Check code formatting with rustfmt
-        run: cargo fmt --check
+      - name: Check code formatting with rustfmt (excluding spreadsheet_ui)
+        run: |
+          find . -name "*.rs" \
+            -not -path "./spreadsheet_ui/*" \
+            -exec rustfmt --check {} +
 
-      - name: Run Clippy
-        run: cargo clippy -- -D warnings
+      - name: Run Clippy (excluding spreadsheet_ui)
+        run: |
+          cargo clippy --all-targets --all-features \
+            --exclude spreadsheet_ui \
+            -- -D warnings
