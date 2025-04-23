@@ -1,24 +1,33 @@
-# Makefile for the Rust Spreadsheet Project
-
 # ===== File Paths =====
+EXECUTABLE = target/release/sheet
 REPORT_SRC = report/report.tex
 REPORT_PDF = report/report.pdf
 
-# ===== Build Targets =====
+# ===== Default Build Target =====
 all: build
 
 build:
 	cargo build --release
 
-run:
-	cargo run --release -- 999 18278
+run: build
+	$(EXECUTABLE) 999 18278
 
-# ===== Code Quality =====
+# ===== Linting =====
 lint:
 	cargo fmt --check && cargo clippy -- -D warnings
 
+# ===== Testing =====
+# Run integration tests in the `tests/` directory (ignores main.rs unit tests)
 test:
-	cargo test
+	cargo test --test test -- --test-threads=1
+
+# Run unit tests with tarpaulin for coverage (only for main.rs, excluding GUI)
+coverage:
+	cargo tarpaulin --out Html --exclude-files src/spreadsheet_ui/*
+
+coverage-open:
+	xdg-open tarpaulin-report.html
+
 
 # ===== Report Generation =====
 report: $(REPORT_PDF)
@@ -30,3 +39,4 @@ $(REPORT_PDF): $(REPORT_SRC)
 clean:
 	cargo clean
 	rm -f report/*.aux report/*.log report/*.pdf
+	rm -f tarpaulin-report.html

@@ -132,3 +132,7 @@ The interface runs in a continuous loop, accepting commands and assignments unti
 - The interface is designed to be both scriptable and interactive, making it suitable for experimentation and testing.
 
 ---
+
+![Lint](https://github.com/Skyblock127/Rust-Assignment_COP290/actions/workflows/lint.yml/badge.svg)
+![Tests](https://github.com/Skyblock127/Rust-Assignment_COP290/actions/workflows/test.yml/badge.svg)
+![Coverage](https://github.com/Skyblock127/Rust-Assignment_COP290/actions/workflows/coverage.yml/badge.svg)

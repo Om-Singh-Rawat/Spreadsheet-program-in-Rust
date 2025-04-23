@@ -923,16 +923,15 @@ fn main() {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::*; 
+    use super::*;
     fn create_sheet(rows: usize, cols: usize) -> Spreadsheet {
         Spreadsheet::new(rows, cols)
     }
     #[test]
     fn dummy_test() {
-        assert_eq!(2 + 2, 4); 
+        assert_eq!(2 + 2, 4);
     }
 
     #[test]
@@ -973,7 +972,10 @@ mod tests {
         sheet.process_input("A2 = 0").unwrap();
         sheet.process_input("A3 = A1 / A2").unwrap();
         assert_eq!(sheet.get_cell_value(2, 0), Some(0));
-        assert_eq!(sheet.errors.get(&(2, 0)), Some(&"division by zero".to_string()));
+        assert_eq!(
+            sheet.errors.get(&(2, 0)),
+            Some(&"division by zero".to_string())
+        );
     }
 
     #[test]
@@ -994,36 +996,42 @@ mod tests {
     #[test]
     fn test_dependency_tracking() {
         let mut sheet = create_sheet(5, 5);
-        
+
         // Set up dependencies
         sheet.process_input("A1 = 5").unwrap();
         sheet.process_input("B1 = A1").unwrap();
-        
+
         // Verify B1 depends on A1
         assert!(sheet.dependencies.get(&(0, 1)).unwrap().contains(&(0, 0)));
-        
+
         // Verify A1 is depended on by B1
-        assert!(sheet.reverse_dependencies.get(&(0, 0)).unwrap().contains(&(0, 1)));
-        
+        assert!(
+            sheet
+                .reverse_dependencies
+                .get(&(0, 0))
+                .unwrap()
+                .contains(&(0, 1))
+        );
+
         // Update B1 to remove dependency
         sheet.process_input("B1 = 10").unwrap();
-        
+
         // The dependency should be removed
         assert!(!sheet.dependencies.get(&(0, 1)).unwrap().contains(&(0, 0)));
     }
-    
+
     #[test]
     fn test_function_argument_validation() {
         let mut sheet = create_sheet(5, 5);
-        
+
         // SUM requires a range, not a single cell
         let result = sheet.process_input("A1 = SUM(B1)");
         assert!(result.is_err());
-        
+
         // SLEEP requires a literal or cell, not a range
         let result = sheet.process_input("A1 = SLEEP(B1:C2)");
         assert!(result.is_err());
-        
+
         // AVG with empty range
         let result = sheet.process_input("B1 = AVG()");
         assert!(result.is_err());
@@ -1034,20 +1042,20 @@ mod tests {
         let mut sheet = create_sheet(20, 20);
         sheet.view_top = 0;
         sheet.view_left = 0;
-        
+
         // Basic scrolling
         sheet.scroll("s"); // Down
         assert_eq!(sheet.view_top, 10);
-        
+
         sheet.scroll("d"); // Right
         assert_eq!(sheet.view_left, 10);
-        
+
         sheet.scroll("w"); // Up
         assert_eq!(sheet.view_top, 0);
-        
+
         sheet.scroll("a"); // Left
         assert_eq!(sheet.view_left, 0);
-        
+
         // Boundary conditions
         sheet.view_top = 0;
         sheet.view_left = 0;
@@ -1060,12 +1068,12 @@ mod tests {
     #[test]
     fn test_scroll_to_command() {
         let mut sheet = create_sheet(20, 20);
-        
+
         // Valid scroll_to
         sheet.process_input("scroll_to B5").unwrap();
         assert_eq!(sheet.view_top, 4);
         assert_eq!(sheet.view_left, 1);
-        
+
         // Invalid scroll_to
         let result = sheet.process_input("scroll_to Z100");
         assert!(result.is_err());
@@ -1075,10 +1083,10 @@ mod tests {
     fn test_output_toggle() {
         let mut sheet = create_sheet(5, 5);
         sheet.output_enabled = false;
-        
+
         sheet.process_input("enable_output").unwrap();
         assert!(sheet.output_enabled);
-        
+
         sheet.process_input("disable_output").unwrap();
         assert!(!sheet.output_enabled);
     }
@@ -1094,22 +1102,22 @@ mod tests {
     #[test]
     fn test_error_handling() {
         let mut sheet = create_sheet(5, 5);
-        
+
         // Division by zero
         sheet.process_input("A1 = 10").unwrap();
         sheet.process_input("A2 = 0").unwrap();
         sheet.process_input("A3 = A1 / A2").unwrap();
         assert_eq!(sheet.get_cell_value(2, 0), Some(0)); // Default value on error
         assert!(sheet.errors.contains_key(&(2, 0))); // Error flag is set
-        
+
         // Invalid cell reference
         let result = sheet.process_input("Z100 = 5");
         assert!(result.is_err());
-        
+
         // Invalid expression
         let result = sheet.process_input("A1 = 5 + ");
         assert!(result.is_err());
-        
+
         // Invalid function
         let result = sheet.process_input("A1 = NONEXISTENT(A2:A3)");
         assert!(result.is_err());
@@ -1118,16 +1126,16 @@ mod tests {
     #[test]
     fn test_error_propagation() {
         let mut sheet = create_sheet(5, 5);
-        
+
         // Create an error
         sheet.process_input("A1 = 10").unwrap();
         sheet.process_input("A2 = 0").unwrap();
         sheet.process_input("A3 = A1 / A2").unwrap(); // Error
-        
+
         // Error should propagate through references
         sheet.process_input("B1 = A3").unwrap();
         assert!(sheet.errors.contains_key(&(0, 1)));
-        
+
         // Error should propagate through functions
         sheet.process_input("B2 = SUM(A3:A3)").unwrap();
         assert!(sheet.errors.contains_key(&(1, 1)));
@@ -1136,18 +1144,18 @@ mod tests {
     #[test]
     fn test_cycle_detection() {
         let mut sheet = create_sheet(5, 5);
-        
+
         // Direct cycle
         sheet.process_input("A1 = B1").unwrap();
         let result = sheet.process_input("B1 = A1");
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "cycle detected");
-        
+
         // Self-reference
         let result = sheet.process_input("C1 = C1");
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "cycle detected");
-        
+
         // Indirect cycle
         sheet = create_sheet(5, 5);
         sheet.process_input("A1 = B1").unwrap();
@@ -1160,20 +1168,20 @@ mod tests {
     #[test]
     fn test_dependency_updates() {
         let mut sheet = create_sheet(5, 5);
-        
+
         // Basic dependency
         sheet.process_input("A1 = 10").unwrap();
         sheet.process_input("B1 = A1").unwrap();
         assert_eq!(sheet.get_cell_value(0, 1), Some(10));
-        
+
         // Update source cell
         sheet.process_input("A1 = 20").unwrap();
         assert_eq!(sheet.get_cell_value(0, 1), Some(20));
-        
+
         // Multi-level dependencies
         sheet.process_input("C1 = B1 + 5").unwrap();
         assert_eq!(sheet.get_cell_value(0, 2), Some(25));
-        
+
         // Update original source - should cascade
         sheet.process_input("A1 = 30").unwrap();
         assert_eq!(sheet.get_cell_value(0, 1), Some(30)); // B1 updates
@@ -1187,7 +1195,7 @@ mod tests {
         sheet.process_input("A2 = 20").unwrap();
         sheet.process_input("B1 = SUM(A1:A2)").unwrap();
         assert_eq!(sheet.get_cell_value(0, 1), Some(30));
-        
+
         // Update one cell in the range
         sheet.process_input("A1 = 15").unwrap();
         assert_eq!(sheet.get_cell_value(0, 1), Some(35));
@@ -1196,16 +1204,16 @@ mod tests {
     #[test]
     fn test_sleep_functions() {
         let mut sheet = create_sheet(5, 5);
-        
+
         // Test with literal value
         sheet.process_input("A1 = SLEEP(0)").unwrap(); // Use 0 to keep test fast
         assert_eq!(sheet.get_cell_value(0, 0), Some(0));
-        
+
         // Test with cell reference
         sheet.process_input("B1 = 0").unwrap();
         sheet.process_input("B2 = SLEEP(B1)").unwrap();
         assert_eq!(sheet.get_cell_value(1, 1), Some(0));
-        
+
         // Test with negative value (should not actually sleep)
         sheet.process_input("C1 = SLEEP(-1)").unwrap();
         assert_eq!(sheet.get_cell_value(0, 2), Some(-1));
@@ -1219,7 +1227,7 @@ mod tests {
         sheet.process_input("B1 = SUM(A1:A3)").unwrap();
         assert_eq!(sheet.get_cell_value(0, 1), Some(6));
     }
-    
+
     #[test]
     fn test_avg_function() {
         let mut sheet = create_sheet(5, 5);
@@ -1229,23 +1237,23 @@ mod tests {
         sheet.process_input("B1 = AVG(A1:A3)").unwrap();
         assert_eq!(sheet.get_cell_value(0, 1), Some(4));
     }
-    
+
     #[test]
     fn test_min_max_functions() {
         let mut sheet = create_sheet(5, 5);
         sheet.process_input("A1 = 4").unwrap();
         sheet.process_input("A2 = 2").unwrap();
         sheet.process_input("A3 = 6").unwrap();
-        
+
         // Test MIN function
         sheet.process_input("B1 = MIN(A1:A3)").unwrap();
         assert_eq!(sheet.get_cell_value(0, 1), Some(2));
-        
+
         // Test MAX function
         sheet.process_input("B2 = MAX(A1:A3)").unwrap();
         assert_eq!(sheet.get_cell_value(1, 1), Some(6));
     }
-    
+
     #[test]
     fn test_stdev_function() {
         let mut sheet = create_sheet(5, 5);
@@ -1256,22 +1264,21 @@ mod tests {
         // Standard deviation of 2,4,6 is 2
         assert_eq!(sheet.get_cell_value(0, 1), Some(2));
     }
-    
+
     #[test]
     fn test_column_conversion() {
-
         assert_eq!(Spreadsheet::column_index_to_label(0), "A");
         assert_eq!(Spreadsheet::column_index_to_label(25), "Z");
         assert_eq!(Spreadsheet::column_index_to_label(26), "AA");
         assert_eq!(Spreadsheet::column_index_to_label(701), "ZZ");
         assert_eq!(Spreadsheet::column_index_to_label(702), "AAA");
-        
+
         // Column label to index
         assert_eq!(Spreadsheet::column_label_to_index("A"), Some(0));
         assert_eq!(Spreadsheet::column_label_to_index("Z"), Some(25));
         assert_eq!(Spreadsheet::column_label_to_index("AA"), Some(26));
         assert_eq!(Spreadsheet::column_label_to_index("ZZ"), Some(701));
-        
+
         // Invalid labels
         assert_eq!(Spreadsheet::column_label_to_index("a"), None); // Lowercase
         assert_eq!(Spreadsheet::column_label_to_index("123"), None); // Number
@@ -1280,26 +1287,26 @@ mod tests {
     #[test]
     fn test_edge_cases() {
         let mut sheet = create_sheet(5, 5);
-        
+
         // Empty expression
         let result = sheet.process_input("A1 = ");
         assert!(result.is_err());
-        
+
         // Range out of bounds
         let result = sheet.process_input("A1 = SUM(A1:Z100)");
         assert!(result.is_err());
-        
+
         // STDEV with insufficient values
         sheet.process_input("A1 = 5").unwrap();
         let result = sheet.process_input("B1 = STDEV(A1:A1)");
         assert_eq!(sheet.get_cell_value(0, 1), Some(0));
-        
+
         // Function case insensitivity
         sheet.process_input("A1 = 5").unwrap();
         sheet.process_input("A2 = 10").unwrap();
         sheet.process_input("B1 = sum(A1:A2)").unwrap(); // lowercase function name
         assert_eq!(sheet.get_cell_value(0, 1), Some(15));
-        
+
         // Multiple operators (not allowed)
         let result = sheet.process_input("A1 = 5 + 3 * 2");
         assert!(result.is_err());
@@ -1308,16 +1315,15 @@ mod tests {
     #[test]
     fn test_scroll_boundary_conditions() {
         let mut sheet = create_sheet(20, 20);
-        
+
         // Test scrolling beyond grid boundaries
         sheet.view_top = 15;
         sheet.scroll("s");
         assert_eq!(sheet.view_top, 15); // Shouldn't scroll past row 15
-        
+
         sheet.view_left = 15;
         sheet.scroll("d");
         assert_eq!(sheet.view_left, 15); // Shouldn't scroll past column 15
-        
     }
 
     #[test]
@@ -1327,7 +1333,7 @@ mod tests {
         sheet.process_input("B1 = A1").unwrap();
         sheet.process_input("C1 = B1").unwrap();
         sheet.process_input("D1 = C1").unwrap();
-        
+
         // Update root cell and verify propagation order
         sheet.process_input("A1 = 10").unwrap();
         assert_eq!(sheet.get_cell_value(0, 1), Some(10));
