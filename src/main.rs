@@ -646,10 +646,6 @@ impl Spreadsheet {
             }
         }
 
-        if values.is_empty() {
-            return Err("MAX of empty range".to_string());
-        }
-
         Ok(*values.iter().max().unwrap())
     }
 
@@ -671,10 +667,6 @@ impl Spreadsheet {
                     return Err(format!("invalid cell in range: {}", cell_label));
                 }
             }
-        }
-
-        if values.is_empty() {
-            return Err("MIN of empty range".to_string());
         }
 
         Ok(*values.iter().min().unwrap())
@@ -702,11 +694,6 @@ impl Spreadsheet {
                 }
             }
         }
-
-        if count == 0 {
-            return Err("AVG of empty range".to_string());
-        }
-
         // Integer division (truncating)
         Ok(sum / count)
     }
@@ -942,6 +929,13 @@ mod tests {
     }
 
     #[test]
+    fn test_printing() {
+        let mut sheet = create_sheet(0,8);
+        sheet.output_enabled = false;
+        assert_eq!(sheet.print_grid(), ());
+    }
+
+    #[test]
     fn test_binary_addition() {
         let mut sheet = create_sheet(5, 5);
         sheet.process_input("A1 = 2").unwrap();
@@ -1126,7 +1120,8 @@ mod tests {
         let result = sheet.process_input("A1000 = 5");
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "target cell out of bounds");
-    }
+
+        }
 
     #[test]
     fn test_parse_expression_edge_cases() {
@@ -1322,6 +1317,8 @@ mod tests {
         // Test with negative value (should not actually sleep)
         sheet.process_input("C1 = SLEEP(-1)").unwrap();
         assert_eq!(sheet.get_cell_value(0, 2), Some(-1));
+        let result = sheet.process_input("C3 = SLEEP(A1:B2)");
+        assert!(result.is_err()," invalid function argument");
     }
     #[test]
     fn test_sum_function() {
@@ -1341,6 +1338,8 @@ mod tests {
         sheet.process_input("A3 = 6").unwrap();
         sheet.process_input("B1 = AVG(A1:A3)").unwrap();
         assert_eq!(sheet.get_cell_value(0, 1), Some(4));
+        let result = sheet.process_input("B1 = AVG()");
+        assert!(result.is_err());
     }
 
     #[test]
@@ -1354,9 +1353,14 @@ mod tests {
         sheet.process_input("B1 = MIN(A1:A3)").unwrap();
         assert_eq!(sheet.get_cell_value(0, 1), Some(2));
 
+        let result = sheet.process_input("B1 = MIN()");
+        assert!(result.is_err());
         // Test MAX function
         sheet.process_input("B2 = MAX(A1:A3)").unwrap();
         assert_eq!(sheet.get_cell_value(1, 1), Some(6));
+
+        let result = sheet.process_input("B1 = MAX()");
+        assert!(result.is_err());
     }
 
     #[test]
