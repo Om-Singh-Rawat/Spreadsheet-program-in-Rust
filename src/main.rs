@@ -42,17 +42,29 @@ enum FunctionArg {
 
 /// Spreadsheet model containing state, evaluation logic, and cell data.
 struct Spreadsheet {
+    /// 2D grid storing cell values
     grid: Vec<Vec<i32>>,
+    /// Total number of rows in the spreadsheet
     rows: usize,
+    /// Total number of columns in the spreadsheet
     cols: usize,
+    /// Top row of the current viewport
     view_top: usize,
+    /// Leftmost column of the current viewport
     view_left: usize,
+    /// Flag to control grid display output
     output_enabled: bool,
+    /// Map of cell coordinates to their formulas
     cell_expressions: HashMap<(usize, usize), Expression>,
-    dependencies: HashMap<(usize, usize), HashSet<(usize, usize)>>, // For each cell, which cells it depends on.
-    reverse_dependencies: HashMap<(usize, usize), HashSet<(usize, usize)>>, // For each cell, which cells depend on it.
-    errors: HashMap<(usize, usize), String>, // Cells with errors (display "ERR")
+    /// Direct dependencies for each cell
+    dependencies: HashMap<(usize, usize), HashSet<(usize, usize)>>,
+    /// Reverse dependencies for change propagation
+    reverse_dependencies: HashMap<(usize, usize), HashSet<(usize, usize)>>,
+    /// Cells with evaluation errors
+    errors: HashMap<(usize, usize), String>,
+    /// Accumulated sleep duration for SLEEP functions
     total_sleep_secs: u64,
+    /// Last sleep duration executed
     last_sleep_time: u64,
 }
 

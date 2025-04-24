@@ -30,10 +30,16 @@ coverage:
 docs: $(REPORT_PDF)
 	cargo doc --document-private-items
 	cargo doc --open
-	
+
 $(REPORT_PDF): $(REPORT_SRC)
 	pdflatex -output-directory=$(REPORT_DIR) $(REPORT_SRC)
 	cp $(REPORT_DIR)/report.pdf $(REPORT_PDF)
+
+# ===== Extension frontend and backend activation =====
+ext1:
+	cd spreadsheet_ui/client && wasm-pack build --target web --out-dir ../server/static
+	(cd spreadsheet_ui/server && cargo run) & \
+	(cd spreadsheet_ui/client && python3 -m http.server 8080)
 
 # ===== Clean-Up =====
 clean:
