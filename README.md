@@ -184,7 +184,7 @@ This project also features a web-based spreadsheet extension located in the `spr
 - `rocket` (for backend)
 - `rocket_cors` (for CORS support)
 
-### 💻 Run the Extension
+### Run the Extension
 
 ```bash
 make ext1
@@ -197,7 +197,7 @@ This builds the frontend and starts both servers **simultaneously**:
 
 > Note: The frontend build output is placed in `spreadsheet_ui/server/static` and served by a static file server (Python) during development.
 
-### 🧩 Features of the Extension
+### Features of the Extension
 
 - **User Login/Signup** with credential storage (currently local, pluggable to a DB)
 - **Each user has their own spreadsheet** (persisted on the backend)
