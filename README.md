@@ -10,11 +10,9 @@ To run this project and its web-based extension, you'll need the following:
 
 ### 🧱 Core (Terminal-Based Spreadsheet)
 - `cargo` and `rustc` (Rust toolchain)
-- `regex`
-- `lazy_static`
-- `serde`
-- `serde_json`
+- No external crates required
 
+Entirely built with Rust's standard library (std).
 ### 🌐 Web Extension (`spreadsheet_ui/`)
 - `wasm-pack` (Install via `cargo install wasm-pack`)
 - `wasm-bindgen`
