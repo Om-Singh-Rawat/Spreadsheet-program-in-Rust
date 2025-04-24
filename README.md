@@ -6,24 +6,11 @@ This is a terminal-based spreadsheet application written in Rust. It supports in
 
 ## Dependencies
 
-To run this project and its web-based extension, you'll need the following:
-
 ### 🧱 Core (Terminal-Based Spreadsheet)
 - `cargo` and `rustc` (Rust toolchain)
 - No external crates required
 
 Entirely built with Rust's standard library (std).
-### 🌐 Web Extension (`spreadsheet_ui/`)
-- `wasm-pack` (Install via `cargo install wasm-pack`)
-- `wasm-bindgen`
-- `yew`
-- `gloo`
-- `web-sys`
-- `reqwest`
-- `tokio`
-- `serde`, `serde_json`, `serde_derive`
-- `rocket` (for backend)
-- `rocket_cors` (for CORS support)
 
 ---
 
@@ -65,49 +52,14 @@ Entirely built with Rust's standard library (std).
   ```bash
   make docs
   ```
-  Compiles the LaTeX report from `report/report.tex` into `report/report.pdf` and copies it to the root as `report.pdf`. Generates the `index.html` file and opens in browser using the in-built rust command `cargo docs --open`.
+  Compiles the LaTeX report from `report/report.tex` into `report/report.pdf` and copies it to the root as `report.pdf`.
+  Generates the `index.html` file and opens in browser using the in-built rust command `cargo docs --open`.
 
 - **Clean build artifacts and reports**
   ```bash
   make clean
   ```
   Removes build artifacts, LaTeX auxiliary files, generated reports, and the coverage HTML report.
-<<<<<<< HEAD
-
----
-
-### Web-Based Extension (Browser Spreadsheet UI)
-
-This project also features a web-based spreadsheet extension located in the `spreadsheet_ui/` directory. It consists of:
-
-- A **frontend** written in Rust using [Yew](https://yew.rs), compiled to WebAssembly using `wasm-pack`.
-- A **backend server** written in Rust using [Rocket](https://rocket.rs) to handle login/signup and spreadsheet synchronization.
-
-#### 💻 Run the Extension
-
-```bash
-make ext1
-```
-
-This builds the frontend and starts both servers **simultaneously**:
-
-- The backend Rocket server runs on `http://localhost:8000`
-- The frontend is served from `http://localhost:8080`
-
-> Note: The frontend build output is placed in `spreadsheet_ui/server/static` and served by a static file server (Python) during development.
-
-#### 🧩 Features of the Extension
-
-- **User Login/Signup** with credential storage (currently local, pluggable to a DB)
-- **Each user has their own spreadsheet** (persisted on the backend)
-- **Cell dependencies and values are preserved** just like in the terminal app
-- **Frontend UI** displays the spreadsheet, cell focus, and supports navigation
-- **Color-coded dependencies**
-- **Cyclic dependency detection**
-- **Only integers currently supported in GUI view**
-- **Grid limited to 20x10 due to scaling constraints**
-
-> Future work may include collaborative editing, image-based CSV import via ChatGPT API, and better type support.
 
 ---
 
@@ -200,11 +152,6 @@ The interface runs in a continuous loop, accepting commands and assignments unti
 
 ```
 .
-├── spreadsheet_ui/   # Front and back end files for the extension 
-|   ├── client/       # Yew-based frontend (compiled to WebAssembly)
-|   ├── core/         # Shared logic for parsing and evaluation
-|   ├── server/       # Rocket-based backend with auth and persistence
-|   └── Cargo.toml
 ├── src/              # Source code for the spreadsheet along with unit and integration tests.
 ├── report/           # LaTeX report and related files
 ├── Makefile
@@ -222,9 +169,68 @@ The interface runs in a continuous loop, accepting commands and assignments unti
 
 ---
 
-![Lint](https://github.com/Skyblock127/Rust-Assignment_COP290/actions/workflows/lint.yml/badge.svg)
-![Tests](https://github.com/Skyblock127/Rust-Assignment_COP290/actions/workflows/test.yml/badge.svg)
-![Coverage](https://github.com/Skyblock127/Rust-Assignment_COP290/actions/workflows/coverage.yml/badge.svg)
+### Web-Based Extension (Browser Spreadsheet UI)
+
+This project also features a web-based spreadsheet extension located in the `spreadsheet_ui/` directory. It consists of:
+
+- A **frontend** written in Rust using [Yew](https://yew.rs), compiled to WebAssembly using `wasm-pack`.
+- A **backend server** written in Rust using [Rocket](https://rocket.rs) to handle login/signup and spreadsheet synchronization.
+
+#### Dependencies
+
+### 🌐 Web Extension (`spreadsheet_ui/`)
+- `wasm-pack` (Install via `cargo install wasm-pack`)
+- `wasm-bindgen`
+- `yew`
+- `gloo`
+- `web-sys`
+- `reqwest`
+- `tokio`
+- `serde`, `serde_json`, `serde_derive`
+- `rocket` (for backend)
+- `rocket_cors` (for CORS support)
+
+#### 💻 Run the Extension
+
+```bash
+make ext1
+```
+
+This builds the frontend and starts both servers **simultaneously**:
+
+- The backend Rocket server runs on `http://localhost:8000`
+- The frontend is served from `http://localhost:8080`
+
+> Note: The frontend build output is placed in `spreadsheet_ui/server/static` and served by a static file server (Python) during development.
+
+#### 🧩 Features of the Extension
+
+- **User Login/Signup** with credential storage (currently local, pluggable to a DB)
+- **Each user has their own spreadsheet** (persisted on the backend)
+- **Cell dependencies and values are preserved** just like in the terminal app
+- **Frontend UI** displays the spreadsheet, cell focus, and supports navigation
+- **Color-coded dependencies**
+- **Cyclic dependency detection**
+- **Only integers currently supported in GUI view**
+- **Grid limited to 20x10 due to scaling constraints**
+
+> Future work may include collaborative editing, image-based CSV import via ChatGPT API, and better type support.
+
+---
+
+## Project Structure (Extension)
+
+```
+.
+├── spreadsheet_ui/   # Front and back end files for the extension 
+|   ├── client/       # Yew-based frontend (compiled to WebAssembly)
+|   ├── core/         # Shared logic for parsing and evaluation
+|   ├── server/       # Rocket-based backend with auth and persistence
+|   └── Cargo.toml
 ```
 
 ---
+
+![Lint](https://github.com/Skyblock127/Rust-Assignment_COP290/actions/workflows/lint.yml/badge.svg)
+![Tests](https://github.com/Skyblock127/Rust-Assignment_COP290/actions/workflows/test.yml/badge.svg)
+![Coverage](https://github.com/Skyblock127/Rust-Assignment_COP290/actions/workflows/coverage.yml/badge.svg)
