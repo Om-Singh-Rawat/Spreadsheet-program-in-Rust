@@ -1,4 +1,3 @@
-```md
 # Rust Spreadsheet
 
 This is a terminal-based spreadsheet application written in Rust. It supports interactive cell editing, dependency-based recalculation, a set of built-in functions, and command-based navigation and control. The spreadsheet recalculates after every input, ensuring consistency across all dependent cells.
