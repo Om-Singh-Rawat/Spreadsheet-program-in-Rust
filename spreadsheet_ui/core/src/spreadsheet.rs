@@ -12,7 +12,7 @@ enum Expression {
 enum FunctionArg {
     Range((usize, usize), (usize, usize)), // ((row1, col1), (row2, col2))
     #[allow(dead_code)]
-    Cell(usize, usize),                    // (row, col)
+    Cell(usize, usize), // (row, col)
     #[allow(dead_code)]
     Literal(i32),
 }
@@ -26,7 +26,7 @@ pub struct Spreadsheet {
     view_left: usize,
     output_enabled: bool,
     cell_expressions: HashMap<(usize, usize), Expression>,
-    dependencies: HashMap<(usize, usize), HashSet<(usize, usize)>>,       // For each cell, which cells it depends on.
+    dependencies: HashMap<(usize, usize), HashSet<(usize, usize)>>, // For each cell, which cells it depends on.
     reverse_dependencies: HashMap<(usize, usize), HashSet<(usize, usize)>>, // For each cell, which cells depend on it.
     errors: HashMap<(usize, usize), String>, // Cells with errors (display "ERR")
     cell_raw: HashMap<(usize, usize), String>,
@@ -123,7 +123,8 @@ impl Spreadsheet {
 
     fn parse_operand(&self, operand: &str) -> Result<Expression, String> {
         let operand = operand.trim();
-        operand.parse::<i32>()
+        operand
+            .parse::<i32>()
             .map(Expression::Literal)
             .or_else(|_| {
                 if let Some((r, c)) = Self::parse_cell_reference(operand) {
@@ -134,37 +135,40 @@ impl Spreadsheet {
                         Ok(Expression::Cell(r, c))
                     }
                 } else {
-                    Err(format!("'{}' is not a valid integer or cell reference", operand))
+                    Err(format!(
+                        "'{}' is not a valid integer or cell reference",
+                        operand
+                    ))
                 }
             })
     }
 
     fn parse_expression(&self, expr: &str) -> Result<Expression, String> {
         let trimmed = expr.trim();
-    
+
         if let Some(open_paren) = trimmed.find('(') {
             if !trimmed.ends_with(')') {
                 return Err("invalid function declaration".to_string());
             }
-    
+
             let func_name = trimmed[..open_paren].trim();
             if func_name.is_empty() {
                 return Err("empty function name".to_string());
             }
-    
+
             if !func_name.chars().all(|c| c.is_ascii_alphabetic()) {
                 return Err(format!("invalid function name: '{}'", func_name));
             }
-    
+
             let func_name_upper = func_name.to_uppercase();
             let supported = ["SUM", "AVG", "MIN", "MAX", "STDEV", "SLEEP"];
             if !supported.contains(&func_name_upper.as_str()) {
                 return Err(format!("unknown function: '{}'", func_name_upper));
             }
-    
-            let arg = trimmed[open_paren+1..trimmed.len()-1].trim();
+
+            let arg = trimmed[open_paren + 1..trimmed.len() - 1].trim();
             let func_arg = self.parse_function_argument(arg)?;
-    
+
             match func_name_upper.as_str() {
                 "SUM" | "AVG" | "MIN" | "MAX" | "STDEV" => {
                     if !matches!(func_arg, FunctionArg::Range(..)) {
@@ -176,47 +180,46 @@ impl Spreadsheet {
                         return Err("SLEEP requires a cell reference or integer".to_string());
                     }
                 }
-                _ => unreachable!()
+                _ => unreachable!(),
             }
-    
+
             Ok(Expression::Function(func_name_upper, arg.to_string()))
-        
         } else {
             let operators = ['+', '-', '*', '/'];
             let mut operator_pos = None;
             let mut operator_count = 0;
-    
+
             for (i, c) in trimmed.chars().enumerate() {
                 if operators.contains(&c) {
                     operator_count += 1;
                     operator_pos = Some((i, c));
                 }
             }
-    
+
             if operator_count == 1 {
                 let (op_pos, op_char) = operator_pos.unwrap();
                 let left = trimmed[..op_pos].trim();
                 let right = trimmed[op_pos + 1..].trim();
-    
+
                 if left.is_empty() || right.is_empty() {
                     return Err("missing operand(s)".to_string());
                 }
-    
+
                 let left_expr = self.parse_operand(left)?;
                 let right_expr = self.parse_operand(right)?;
-    
+
                 return Ok(Expression::BinaryOp(
                     Box::new(left_expr),
                     op_char,
                     Box::new(right_expr),
                 ));
             }
-    
+
             if operator_count == 0 {
                 if let Ok(num) = trimmed.parse::<i32>() {
                     return Ok(Expression::Literal(num));
                 }
-    
+
                 if let Some((r, c)) = Self::parse_cell_reference(trimmed) {
                     if r >= self.rows || c >= self.cols {
                         let label = format!("{}{}", Self::column_index_to_label(c), r + 1);
@@ -224,14 +227,14 @@ impl Spreadsheet {
                     }
                     return Ok(Expression::Cell(r, c));
                 }
-    
+
                 if trimmed.is_empty() {
                     return Err("expression is empty".to_string());
                 }
-    
+
                 return Err(format!("'{}' is not a valid expression", trimmed));
             }
-    
+
             Err("expressions can only contain one operator".to_string())
         }
     }
@@ -241,48 +244,52 @@ impl Spreadsheet {
     // Extract all cell references (dependencies) from an expression.
     /// Extract dependencies by walking the expression tree.
     /// For SUM functions, if the argument decodes to a range, all cells in that range are added.
-fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
-    let mut deps = HashSet::new();
+    fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
+        let mut deps = HashSet::new();
 
-    fn recurse(expr: &Expression, deps: &mut HashSet<(usize, usize)>) {
-        match expr {
-            Expression::Cell(r, c) => {
-                deps.insert((*r, *c));
-            }
-            Expression::BinaryOp(left, _, right) => {
-                recurse(left, deps);
-                recurse(right, deps);
-            }
-            Expression::Function(name, arg) => {
-                // Handle all range-based functions the same way
-                match name.as_str() {
-                    "SUM" | "MIN" | "MAX" | "AVG" | "STDEV" => {
-                        if let Ok(FunctionArg::Range((r1, c1), (r2, c2))) = 
-                            Spreadsheet::parse_function_argument_static(arg) 
-                        {
-                            for row in r1.min(r2)..=r1.max(r2) {
-                                for col in c1.min(c2)..=c1.max(c2) {
-                                    deps.insert((row, col));
+        fn recurse(expr: &Expression, deps: &mut HashSet<(usize, usize)>) {
+            match expr {
+                Expression::Cell(r, c) => {
+                    deps.insert((*r, *c));
+                }
+                Expression::BinaryOp(left, _, right) => {
+                    recurse(left, deps);
+                    recurse(right, deps);
+                }
+                Expression::Function(name, arg) => {
+                    // Handle all range-based functions the same way
+                    match name.as_str() {
+                        "SUM" | "MIN" | "MAX" | "AVG" | "STDEV" => {
+                            if let Ok(FunctionArg::Range((r1, c1), (r2, c2))) =
+                                Spreadsheet::parse_function_argument_static(arg)
+                            {
+                                for row in r1.min(r2)..=r1.max(r2) {
+                                    for col in c1.min(c2)..=c1.max(c2) {
+                                        deps.insert((row, col));
+                                    }
                                 }
                             }
                         }
+                        // Add other function types here if needed
+                        _ => {}
                     }
-                    // Add other function types here if needed
-                    _ => {}
                 }
+                _ => {}
             }
-            _ => {}
         }
-    }
 
-    recurse(expr, &mut deps);
-    deps
-}
+        recurse(expr, &mut deps);
+        deps
+    }
 
     /// Update dependencies for a given cell:
     /// Remove the old dependencies, then extract from the new expression and update both
     /// forward and reverse dependency maps.
-    fn update_dependencies(&mut self, cell: (usize, usize), expr: &Expression) -> Result<(), String> {
+    fn update_dependencies(
+        &mut self,
+        cell: (usize, usize),
+        expr: &Expression,
+    ) -> Result<(), String> {
         // Remove old reverse dependencies for this cell.
         if let Some(old_deps) = self.dependencies.get(&cell) {
             for dep in old_deps {
@@ -295,7 +302,10 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
         // Extract new dependencies from the expression.
         let new_deps = Self::extract_dependencies(expr);
         for dep in &new_deps {
-            self.reverse_dependencies.entry(*dep).or_default().insert(cell);
+            self.reverse_dependencies
+                .entry(*dep)
+                .or_default()
+                .insert(cell);
         }
         self.dependencies.insert(cell, new_deps);
         Ok(())
@@ -412,13 +422,13 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
                 for &d in deps {
                     if let Some(err) = self.errors.get(&d) {
                         dep_error = Some(err.clone());
-                        break;  // Stop at the first encountered error.
+                        break; // Stop at the first encountered error.
                     }
                 }
                 if dep_error.is_some() {
                     self.errors.insert(current, "ERR".to_string());
                     self.update_cell(current.0, current.1, 0); // Set to default error value.
-                    continue;  // Skip further evaluation for this cell.
+                    continue; // Skip further evaluation for this cell.
                 }
             }
             // If no dependency error, evaluate the cell’s expression.
@@ -437,7 +447,6 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
         }
         Ok(())
     }
-    
 
     // --- End Dependency Methods ---
 
@@ -445,11 +454,10 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
     fn evaluate_expression(&self, expr: &Expression) -> Result<i32, String> {
         match expr {
             Expression::Literal(v) => Ok(*v),
-            Expression::Cell(r, c) => self.get_cell_value(*r, *c)
-                .ok_or_else(|| {
-                    let col_label = Self::column_index_to_label(*c);
-                    format!("invalid cell reference {}{}", col_label, r + 1)
-                }),
+            Expression::Cell(r, c) => self.get_cell_value(*r, *c).ok_or_else(|| {
+                let col_label = Self::column_index_to_label(*c);
+                format!("invalid cell reference {}{}", col_label, r + 1)
+            }),
             Expression::BinaryOp(lhs, op, rhs) => {
                 let left_val = self.evaluate_expression(lhs)?;
                 let right_val = self.evaluate_expression(rhs)?;
@@ -481,16 +489,16 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
 
     fn parse_function_argument_static(arg: &str) -> Result<FunctionArg, String> {
         let trimmed = arg.trim();
-    
+
         if let Some(colon_pos) = trimmed.find(':') {
             let (start, end) = trimmed.split_at(colon_pos);
             let end = &end[1..];
-    
+
             let start_pos = Self::parse_cell_reference(start)
                 .ok_or_else(|| format!("Invalid start cell: '{}'", start))?;
             let end_pos = Self::parse_cell_reference(end)
                 .ok_or_else(|| format!("Invalid end cell: '{}'", end))?;
-    
+
             Ok(FunctionArg::Range(start_pos, end_pos))
         } else if let Some((row, col)) = Self::parse_cell_reference(trimmed) {
             Ok(FunctionArg::Cell(row, col))
@@ -500,75 +508,77 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
             Err(format!("Invalid function argument: {}", trimmed))
         }
     }
-    
+
     // Keep your original method for use in evaluation contexts
     fn parse_function_argument(&self, arg: &str) -> Result<FunctionArg, String> {
         // First use the static method to parse the argument
         let parsed = Self::parse_function_argument_static(arg)?;
-        
+
         // Then do bounds checking based on the parsed result
         match parsed {
             FunctionArg::Range((start_row, start_col), (end_row, end_col)) => {
                 // Check start cell bounds
                 if start_row >= self.rows || start_col >= self.cols {
-                    let label = format!("{}{}", 
+                    let label = format!(
+                        "{}{}",
                         Self::column_index_to_label(start_col),
                         start_row + 1
                     );
                     return Err(format!("Start cell {} is out of bounds", label));
                 }
-                
+
                 // Check end cell bounds
                 if end_row >= self.rows || end_col >= self.cols {
-                    let label = format!("{}{}", 
-                        Self::column_index_to_label(end_col),
-                        end_row + 1
-                    );
+                    let label = format!("{}{}", Self::column_index_to_label(end_col), end_row + 1);
                     return Err(format!("End cell {} is out of bounds", label));
                 }
-                
+
                 // Check that range is in ascending order
                 if start_row > end_row || start_col > end_col {
                     return Err("Range must be in ascending order".to_string());
                 }
-                
-                Ok(FunctionArg::Range((start_row, start_col), (end_row, end_col)))
-            },
+
+                Ok(FunctionArg::Range(
+                    (start_row, start_col),
+                    (end_row, end_col),
+                ))
+            }
             FunctionArg::Cell(row, col) => {
                 if row >= self.rows || col >= self.cols {
                     let label = format!("{}{}", Self::column_index_to_label(col), row + 1);
                     return Err(format!("Cell {} is out of bounds", label));
                 }
                 Ok(FunctionArg::Cell(row, col))
-            },
+            }
             // Literals don't need bounds checking
             FunctionArg::Literal(val) => Ok(FunctionArg::Literal(val)),
         }
     }
-    
-
 
     // --- Function stubs ---
     pub fn handle_sleep(&self, arg: &str) -> Result<i32, String> {
         match self.parse_function_argument(arg)? {
-            FunctionArg::Cell(row, col) => {
-                self.get_cell_value(row, col)
-                    .ok_or_else(|| format!("Invalid cell: {}{}", Self::column_index_to_label(col), row + 1))
-            }
+            FunctionArg::Cell(row, col) => self.get_cell_value(row, col).ok_or_else(|| {
+                format!(
+                    "Invalid cell: {}{}",
+                    Self::column_index_to_label(col),
+                    row + 1
+                )
+            }),
             FunctionArg::Literal(val) => Ok(val),
-            _ => unreachable!() // Already validated during parsing
+            _ => unreachable!(), // Already validated during parsing
         }
     }
 
     pub fn handle_sum(&self, arg: &str) -> Result<i32, String> {
         // SAFETY: `parse_expression` already guarantees `arg` is a valid range.
-        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) = 
-            self.parse_function_argument(arg)? 
+        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) =
+            self.parse_function_argument(arg)?
         else {
             // This case is unreachable due to validation in `parse_expression`.
             unreachable!("SUM argument should have been validated as a range during parsing")
         };
-    
+
         let mut sum = 0;
         for row in start_row.min(end_row)..=start_row.max(end_row) {
             for col in start_col.min(end_col)..=start_col.max(end_col) {
@@ -585,12 +595,12 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
 
     pub fn handle_max(&self, arg: &str) -> Result<i32, String> {
         // Get range from argument
-        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) = 
-            self.parse_function_argument(arg)? 
+        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) =
+            self.parse_function_argument(arg)?
         else {
             unreachable!("MAX argument should have been validated as a range during parsing")
         };
-    
+
         let mut values = Vec::new();
         for row in start_row.min(end_row)..=start_row.max(end_row) {
             for col in start_col.min(end_col)..=start_col.max(end_col) {
@@ -602,22 +612,22 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
                 }
             }
         }
-    
+
         if values.is_empty() {
             return Err("MAX of empty range".to_string());
         }
-    
+
         Ok(*values.iter().max().unwrap())
     }
-    
+
     pub fn handle_min(&self, arg: &str) -> Result<i32, String> {
         // Get range from argument
-        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) = 
-            self.parse_function_argument(arg)? 
+        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) =
+            self.parse_function_argument(arg)?
         else {
             unreachable!("MIN argument should have been validated as a range during parsing")
         };
-    
+
         let mut values = Vec::new();
         for row in start_row.min(end_row)..=start_row.max(end_row) {
             for col in start_col.min(end_col)..=start_col.max(end_col) {
@@ -629,25 +639,25 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
                 }
             }
         }
-    
+
         if values.is_empty() {
             return Err("MIN of empty range".to_string());
         }
-    
+
         Ok(*values.iter().min().unwrap())
     }
-    
+
     pub fn handle_avg(&self, arg: &str) -> Result<i32, String> {
         // Get range from argument
-        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) = 
-            self.parse_function_argument(arg)? 
+        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) =
+            self.parse_function_argument(arg)?
         else {
             unreachable!("AVG argument should have been validated as a range during parsing")
         };
-    
+
         let mut sum = 0;
         let mut count = 0;
-        
+
         for row in start_row.min(end_row)..=start_row.max(end_row) {
             for col in start_col.min(end_col)..=start_col.max(end_col) {
                 if let Some(value) = self.get_cell_value(row, col) {
@@ -659,23 +669,23 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
                 }
             }
         }
-    
+
         if count == 0 {
             return Err("AVG of empty range".to_string());
         }
-    
+
         // Integer division (truncating)
         Ok(sum / count)
     }
-    
+
     pub fn handle_stdev(&self, arg: &str) -> Result<i32, String> {
         // Get range from argument
-        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) = 
-            self.parse_function_argument(arg)? 
+        let FunctionArg::Range((start_row, start_col), (end_row, end_col)) =
+            self.parse_function_argument(arg)?
         else {
             unreachable!("STDEV argument should have been validated as a range during parsing")
         };
-    
+
         // Collect all values
         let mut values = Vec::new();
         for row in start_row.min(end_row)..=start_row.max(end_row) {
@@ -688,27 +698,28 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
                 }
             }
         }
-    
+
         if values.len() <= 1 {
             return Err("STDEV needs at least two values".to_string());
         }
-    
+
         // Calculate mean
         let sum: i32 = values.iter().sum();
         let mean = sum as f64 / values.len() as f64;
-    
+
         // Calculate variance
-        let variance = values.iter()
+        let variance = values
+            .iter()
             .map(|&x| {
                 let diff = x as f64 - mean;
                 diff * diff
             })
-            .sum::<f64>() / (values.len() - 1) as f64;
-    
+            .sum::<f64>()
+            / (values.len() - 1) as f64;
+
         // Return standard deviation as integer (rounded)
         Ok(variance.sqrt().round() as i32)
     }
-    
 
     // --- Assignment & Dependency Methods (with cycle detection and recalculation) ---
     pub fn handle_assignment(&mut self, input: &str) -> Result<(), String> {
@@ -716,42 +727,44 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
         if parts.len() != 2 {
             return Err("unrecognized cmd".to_string());
         }
-    
+
         let cell_ref = parts[0].trim();
         let expr = parts[1].trim();
-    
+
         let (target_row, target_col) = Self::parse_cell_reference(cell_ref)
             .ok_or_else(|| format!("invalid cell format: '{}'", cell_ref))?;
-    
+
         if target_row >= self.rows || target_col >= self.cols {
             return Err("target cell out of bounds".to_string());
         }
-    
+
         let parsed_expr = self.parse_expression(expr)?;
-    
+
         // Extract new dependencies
         let new_deps = Self::extract_dependencies(&parsed_expr);
-    
+
         // Check for cycles
         if self.detect_cycle((target_row, target_col), &new_deps) {
             return Err("cycle detected".to_string());
         }
-    
+
         // Store new expression _only_ if it’s not a pure literal,
         // otherwise drop any previous formula.
         if !matches!(parsed_expr, Expression::Literal(_)) {
-            self.cell_expressions.insert((target_row, target_col), parsed_expr.clone());
+            self.cell_expressions
+                .insert((target_row, target_col), parsed_expr.clone());
         } else {
             self.cell_expressions.remove(&(target_row, target_col));
         }
 
-        self.cell_raw.insert((target_row, target_col), expr.to_string());
-    
+        self.cell_raw
+            .insert((target_row, target_col), expr.to_string());
+
         // Update the dependencies, and handle cycle detection here
         if let Err(_) = self.update_dependencies((target_row, target_col), &parsed_expr) {
             return Err("cycle detected".to_string()); // Return early on cycle detection
         }
-    
+
         // Evaluate expression and handle errors
         let value = match self.evaluate_expression(&parsed_expr) {
             Ok(val) => {
@@ -763,17 +776,15 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
                 0 // Use a fallback value for grid when an error occurs
             }
         };
-    
+
         // Update the grid cell with the evaluated value or error
         self.update_cell(target_row, target_col, value);
-    
+
         // Force recalculation of dependents, even if value didn't change
         let _ = self.recalculate_dependents((target_row, target_col));
-    
+
         Ok(()) // Always return Ok unless cycle detected
     }
-    
-    
 
     pub fn scroll(&mut self, dir: &str) {
         match dir {
@@ -855,22 +866,21 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
 
         for (row_idx, result) in rdr.records().enumerate() {
             let record = result.map_err(|e| format!("CSV error (row {}): {}", row_idx + 1, e))?;
-            
+
             if row_idx >= self.rows {
                 return Err(format!("CSV exceeds row limit (max {})", self.rows));
             }
 
             for (col_idx, field) in record.iter().enumerate() {
                 if col_idx >= self.cols {
-                    return Err(format!("CSV row {} exceeds column limit (max {})", 
-                        row_idx + 1, self.cols));
+                    return Err(format!(
+                        "CSV row {} exceeds column limit (max {})",
+                        row_idx + 1,
+                        self.cols
+                    ));
                 }
 
-                let cell_ref = format!(
-                    "{}{}",
-                    Self::column_index_to_label(col_idx),
-                    row_idx + 1
-                );
+                let cell_ref = format!("{}{}", Self::column_index_to_label(col_idx), row_idx + 1);
 
                 // Skip empty fields
                 let trimmed = field.trim();
@@ -887,13 +897,11 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
         Ok(())
     }
 
-
-
     pub fn export_csv(&self) -> String {
         let mut wtr = csv::WriterBuilder::new()
             .delimiter(b',')
             .from_writer(vec![]);
-    
+
         for row in 0..self.rows {
             let mut record = vec![];
             for col in 0..self.cols {
@@ -908,6 +916,4 @@ fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
         }
         String::from_utf8(wtr.into_inner().unwrap()).unwrap()
     }
-    
 }
-

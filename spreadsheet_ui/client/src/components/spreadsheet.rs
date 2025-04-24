@@ -1,27 +1,25 @@
 use crate::components::cell::Cell;
 use crate::components::status_bar::StatusBar;
 use spreadsheet_core::spreadsheet::Spreadsheet;
-use yew::prelude::*;
+use spreadsheet_core::wasm::WasmSheet;
 use wasm_bindgen::prelude::*;
-use spreadsheet_core::wasm::WasmSheet;  
+use yew::prelude::*;
 
 #[derive(Properties, PartialEq)]
 pub struct SpreadsheetProps {
     pub rows: usize,
     pub cols: usize,
-    pub spreadsheet: WasmSheet,  // Add this to receive the spreadsheet from parent
-    pub on_change: Callback<(usize, usize, String)>,  // Add callback to update parent's state
+    pub spreadsheet: WasmSheet, // Add this to receive the spreadsheet from parent
+    pub on_change: Callback<(usize, usize, String)>, // Add callback to update parent's state
     #[prop_or_default]
     pub on_load_by_name: Callback<String>,
 }
 
 #[function_component(SpreadsheetGrid)]
 pub fn spreadsheet_grid(props: &SpreadsheetProps) -> Html {
-    
-    let selected_cell = use_state(|| (0, 0));     // tracks which cell is clicked/active.
-    let status = use_state(|| "Ready".to_string()); 
+    let selected_cell = use_state(|| (0, 0)); // tracks which cell is clicked/active.
+    let status = use_state(|| "Ready".to_string());
     let is_editing = use_state(|| false); // Track if a cell is being edited
-    
 
     let on_cell_change = props.on_change.clone();
     // Handle cell selection
@@ -43,58 +41,73 @@ pub fn spreadsheet_grid(props: &SpreadsheetProps) -> Html {
         let rows = props.rows;
         let cols = props.cols;
         let status = status.clone();
-        
+
         Callback::from(move |e: KeyboardEvent| {
             // Only handle navigation when not editing a cell
             if !*is_editing {
                 let (row, col) = *selected_cell;
-                
+
                 match e.key().as_str() {
                     "ArrowUp" => {
                         if row > 0 {
                             selected_cell.set((row - 1, col));
-                            status.set(format!("Moved to cell {}{}", 
-                                Spreadsheet::column_index_to_label(col), row));
+                            status.set(format!(
+                                "Moved to cell {}{}",
+                                Spreadsheet::column_index_to_label(col),
+                                row
+                            ));
                             e.prevent_default();
                         }
-                    },
+                    }
                     "ArrowDown" => {
                         if row < rows - 1 {
                             selected_cell.set((row + 1, col));
-                            status.set(format!("Moved to cell {}{}", 
-                                Spreadsheet::column_index_to_label(col), row + 2));
+                            status.set(format!(
+                                "Moved to cell {}{}",
+                                Spreadsheet::column_index_to_label(col),
+                                row + 2
+                            ));
                             e.prevent_default();
                         }
-                    },
+                    }
                     "ArrowLeft" => {
                         if col > 0 {
                             selected_cell.set((row, col - 1));
-                            status.set(format!("Moved to cell {}{}", 
-                                Spreadsheet::column_index_to_label(col - 1), row + 1));
+                            status.set(format!(
+                                "Moved to cell {}{}",
+                                Spreadsheet::column_index_to_label(col - 1),
+                                row + 1
+                            ));
                             e.prevent_default();
                         }
-                    },
+                    }
                     "ArrowRight" => {
                         if col < cols - 1 {
                             selected_cell.set((row, col + 1));
-                            status.set(format!("Moved to cell {}{}", 
-                                Spreadsheet::column_index_to_label(col + 1), row + 1));
+                            status.set(format!(
+                                "Moved to cell {}{}",
+                                Spreadsheet::column_index_to_label(col + 1),
+                                row + 1
+                            ));
                             e.prevent_default();
                         }
-                    },
+                    }
                     "Enter" => {
                         // Enter edit mode for the currently selected cell
                         is_editing.set(true);
-                        status.set(format!("Editing cell {}{}", 
-                            Spreadsheet::column_index_to_label(col), row + 1));
+                        status.set(format!(
+                            "Editing cell {}{}",
+                            Spreadsheet::column_index_to_label(col),
+                            row + 1
+                        ));
                         e.prevent_default();
-                    },
+                    }
                     _ => {}
                 }
             }
         })
     };
-    
+
     // Update Cell props to notify when editing begins
     let on_edit_start = {
         let is_editing = is_editing.clone();
@@ -102,7 +115,7 @@ pub fn spreadsheet_grid(props: &SpreadsheetProps) -> Html {
             is_editing.set(true);
         })
     };
-    
+
     // Update Cell props to notify when editing ends
     let on_edit_end = {
         let is_editing = is_editing.clone();
@@ -110,8 +123,6 @@ pub fn spreadsheet_grid(props: &SpreadsheetProps) -> Html {
             is_editing.set(false);
         })
     };
-    
-
 
     html! {
         <div class="spreadsheet-container">
@@ -120,9 +131,9 @@ pub fn spreadsheet_grid(props: &SpreadsheetProps) -> Html {
                 formula={formula}
                 status={(*status).clone()}
             />
-            <div 
-                class="grid-container" 
-                tabindex="0" 
+            <div
+                class="grid-container"
+                tabindex="0"
                 onkeydown={onkeydown}
             >
                 <table class="spreadsheet">
@@ -177,4 +188,4 @@ pub fn spreadsheet_grid(props: &SpreadsheetProps) -> Html {
             </div>
         </div>
     }
-} 
+}

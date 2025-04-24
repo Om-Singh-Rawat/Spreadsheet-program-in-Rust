@@ -1,5 +1,5 @@
-use yew::prelude::*;
 use web_sys::HtmlInputElement;
+use yew::prelude::*;
 
 #[derive(Properties, PartialEq)]
 pub struct CellProps {
@@ -12,8 +12,8 @@ pub struct CellProps {
     pub on_change: Callback<(usize, usize, String)>,
     pub is_selected: bool,
     pub on_select: Callback<(usize, usize)>,
-    pub on_edit_start: Callback<()>, 
-    pub on_edit_end: Callback<()>,   
+    pub on_edit_start: Callback<()>,
+    pub on_edit_end: Callback<()>,
 }
 
 #[function_component(Cell)]
@@ -30,53 +30,52 @@ pub fn cell(props: &CellProps) -> Html {
         })
     };
 
-
     // Create focus ref for selected cells
     let cell_ref = use_node_ref();
-    
+
     // Effect to focus cell when selected
-use_effect_with_deps(
-    |(is_selected, cell_ref, is_editing)| {
-        if *is_selected && !**is_editing {
-            if let Some(element) = cell_ref.cast::<web_sys::HtmlElement>() {
-                let _ = element.focus();
-                
-                // Return a boxed closure
-                return Box::new(|| {
-                    web_sys::console::log_1(&"Cell focus effect cleaned up".into());
-                }) as Box<dyn FnOnce()>;
+    use_effect_with_deps(
+        |(is_selected, cell_ref, is_editing)| {
+            if *is_selected && !**is_editing {
+                if let Some(element) = cell_ref.cast::<web_sys::HtmlElement>() {
+                    let _ = element.focus();
+
+                    // Return a boxed closure
+                    return Box::new(|| {
+                        web_sys::console::log_1(&"Cell focus effect cleaned up".into());
+                    }) as Box<dyn FnOnce()>;
+                }
             }
-        }
-        
-        // Return a different boxed closure with the same type
-        Box::new(|| web_sys::console::log_1(&"Cell effect ran but no action taken".into())) as Box<dyn FnOnce()>
-    },
-    (props.is_selected, cell_ref.clone(), is_editing.clone())
-);
 
-// Effect to focus input when editing begins
-use_effect_with_deps(
-    |(is_editing, input_ref)| {
-        if **is_editing {
-            if let Some(input) = input_ref.cast::<HtmlInputElement>() {
-                let _ = input.focus();
-                input.select();
-                
-                // Return a boxed closure
-                return Box::new(|| {
-                    web_sys::console::log_1(&"Input focus effect cleaned up".into());
-                }) as Box<dyn FnOnce()>;
+            // Return a different boxed closure with the same type
+            Box::new(|| web_sys::console::log_1(&"Cell effect ran but no action taken".into()))
+                as Box<dyn FnOnce()>
+        },
+        (props.is_selected, cell_ref.clone(), is_editing.clone()),
+    );
+
+    // Effect to focus input when editing begins
+    use_effect_with_deps(
+        |(is_editing, input_ref)| {
+            if **is_editing {
+                if let Some(input) = input_ref.cast::<HtmlInputElement>() {
+                    let _ = input.focus();
+                    input.select();
+
+                    // Return a boxed closure
+                    return Box::new(|| {
+                        web_sys::console::log_1(&"Input focus effect cleaned up".into());
+                    }) as Box<dyn FnOnce()>;
+                }
             }
-        }
-        
-        // Return a different boxed closure with the same type
-        Box::new(|| web_sys::console::log_1(&"Input effect ran but no action taken".into())) as Box<dyn FnOnce()>
-    },
-    (is_editing.clone(), input_ref.clone())
-);
 
+            // Return a different boxed closure with the same type
+            Box::new(|| web_sys::console::log_1(&"Input effect ran but no action taken".into()))
+                as Box<dyn FnOnce()>
+        },
+        (is_editing.clone(), input_ref.clone()),
+    );
 
-    
     let ondblclick = {
         let is_editing = is_editing.clone();
         Callback::from(move |_| {
@@ -128,8 +127,16 @@ use_effect_with_deps(
 
     let cell_classes = classes!(
         "cell",
-        if props.is_selected { Some("selected") } else { None },
-        if props.is_formula { Some("formula") } else { None },
+        if props.is_selected {
+            Some("selected")
+        } else {
+            None
+        },
+        if props.is_formula {
+            Some("formula")
+        } else {
+            None
+        },
         if props.has_error { Some("error") } else { None },
     );
 

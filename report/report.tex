@@ -1,26 +1,111 @@
-\documentclass{article}
+\documentclass[11pt]{article}
 \usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
 
-\title{Spreadsheet Project Report}
-\author{Ravi Kumawat}
-\date{\today}
+\geometry{margin=1in}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    pdftitle={Spreadsheet Project Documentation},
+    pdfpagemode=FullScreen,
+}
+
+\title{Spreadsheet Project \\ \large Terminal-Based Spreadsheet with Web UI Extension}
+\author{Ravi Kumawat 2023CS10723 | Om Singh Rawat 2023CS10118 | Akash Giri 2022ES11802}
+\date{}
 
 \begin{document}
 
 \maketitle
 
-\section{Introduction}
-This is a sample LaTeX report for the spreadsheet project.
+\section{Design and Architecture}
 
-\section{Features}
+\subsection{Software Design and Architecture}
+
+The spreadsheet application was implemented in two primary stages: a terminal-based interactive spreadsheet, and a proposed extension toward a real-time collaborative web-based spreadsheet. The architecture emphasizes modularity and separation of concerns, ensuring maintainability and scalability.
+
+The terminal spreadsheet is composed of three main components:
 \begin{itemize}
-    \item Scrollable 2D grid
-    \item Cell editing
-    \item Commands like \texttt{scroll\_to}, \texttt{SLEEP}, \texttt{disable\_output}, etc.
-    \item Arithmetic expressions and functions: \texttt{SUM}, \texttt{MAX}, etc.
+    \item \textbf{Core Engine:} Handles cell evaluation, dependency tracking, expression parsing, and cycle detection.
+    \item \textbf{UI Layer (Terminal):} Responsible for rendering the 20x10 grid, managing input, navigation, and cell highlighting (e.g., bluish color for dependencies).
+    \item \textbf{Persistence Layer:} Handles save/load operations for spreadsheets.
 \end{itemize}
 
-\section{Conclusion}
-This document was generated using \LaTeX{} and compiled using \texttt{make report}.
+The system adopts a command-based interaction loop for input processing, and separates computation (evaluation engine) from presentation logic. This encapsulation facilitates potential future extensions to other UIs.
+
+\subsection{Primary Data Structures}
+
+\begin{itemize}
+    \item \texttt{HashMap<(usize, usize), Cell>} is used to map coordinates to cell contents.
+    \item \texttt{Cell} struct stores the raw expression, the evaluated result (if any), and metadata such as dependency links.
+    \item Dependency graphs are represented using adjacency lists and visited sets to detect cycles during recalculation.
+\end{itemize}
+
+\subsection{Encapsulation and Interfaces}
+
+Interfaces were designed such that the evaluation engine exposes a minimal API:
+\begin{lstlisting}[basicstyle=\ttfamily, backgroundcolor=\color{gray!10}, frame=single]
+pub fn set_cell(&mut self, coord: (usize, usize), expr: &str)
+pub fn get_display_value(&self, coord: (usize, usize)) -> String
+pub fn recalculate(&mut self)
+\end{lstlisting}
+
+This ensures encapsulation of the internal logic and allows easy replacement of the UI layer without modifying the core logic.
+
+\subsection{Justification of Design}
+
+The separation between UI, core engine, and persistence allows clean abstraction layers. For instance, integrating a new web-based UI required only exposing the same \texttt{set\_cell} and \texttt{get\_display\_value} functions via WebAssembly bindings, without altering the evaluation engine.
+
+Additionally, displaying dependency chains using color-coding (e.g., bluish cells) enhances usability and debugging for users while preserving correctness guarantees through static cycle detection.
+
+\subsection{Design Modifications}
+
+Initially, the design assumed that the spreadsheet could scale arbitrarily. However, rendering and managing large grids (e.g., 100x100) in the terminal led to significant performance degradation and UI glitches. After performance profiling, the grid was limited to 20x10, striking a balance between functionality and responsiveness.
+
+\section{Extension Proposal and Challenges}
+
+\subsection{Proposed Features}
+
+The proposed extension aimed to bring two cutting-edge features:
+\begin{enumerate}
+    \item Real-time collaborative editing using WebSockets or polling-based synchronization.
+    \item Image-to-CSV import using OCR and the ChatGPT API to parse table-like image data into structured cell inputs.
+\end{enumerate}
+
+\subsection{Why Extensions Could Not Be Implemented}
+
+Despite the feasibility of these ideas in isolation, practical limitations during implementation led to their exclusion:
+
+\subsubsection*{Real-time Collaboration}
+Initial architecture for collaboration was prototyped using an Axum + Yew stack with user authentication and spreadsheet ownership per user. However, implementing real-time synchronization required either:
+\begin{itemize}
+    \item a centralized live state server with WebSocket support, or
+    \item a CRDT-based (conflict-free replicated data type) model for peer-to-peer sync.
+\end{itemize}
+Both required non-trivial concurrency management, data consistency models, and network-aware event resolution, none of which were feasible within the project timeline while maintaining correctness guarantees. Moreover, ensuring low-latency updates across multiple clients required infrastructure deployment that could not be set up in the evaluation environment.
+
+\subsubsection*{Image-to-CSV Import using ChatGPT API}
+Integrating an OCR pipeline to convert tabular images into CSV involved:
+\begin{itemize}
+    \item Frontend file upload capabilities,
+    \item An OCR layer (e.g., Tesseract) to extract text from the image,
+    \item Prompt formatting for ChatGPT API to reliably convert OCR text into structured CSV,
+    \item Validating the returned CSV for consistency with the existing spreadsheet schema.
+\end{itemize}
+The primary blocker was the OCR-to-CSV accuracy pipeline. Even with advanced prompts, OCR-generated raw data had inconsistent formatting. These discrepancies resulted in malformed CSVs, incorrect data positions, and mismatched row/column lengths. Since the integrity of loaded data was a core requirement, the feature was not deployed to avoid corrupted spreadsheets.
+
+\subsection{Possibility of Future Extensions}
+
+Despite the unimplemented features, the current architecture is future-proof:
+\begin{itemize}
+    \item Collaboration can be added using a WebSocket layer on top of the current Axum server with event-based broadcasting.
+    \item Image-to-CSV can be integrated once a reliable OCR+postprocessing pipeline is available.
+    \item Additional features such as formula hints, undo history, and larger grid navigation are feasible given the modular core engine.
+\end{itemize}
 
 \end{document}

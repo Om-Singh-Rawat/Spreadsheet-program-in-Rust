@@ -6,6 +6,9 @@ This is a terminal-based spreadsheet application written in Rust. It supports in
 
 ## Build and Usage
 
+Sure! Here's a copy-paste-ready markdown snippet you can insert directly into your `README.md`:
+
+```markdown
 ### Build Options
 
 - **Build the binary executable**
@@ -14,17 +17,42 @@ This is a terminal-based spreadsheet application written in Rust. It supports in
   ```
   This compiles the project and places the binary in `target/release/spreadsheet`.
 
+- **Run the application**
+  ```bash
+  make run
+  ```
+  Builds the project (if necessary) and runs it with sample arguments (`999 18278`).
+
 - **Run tests**
   ```bash
   make test
   ```
   Executes test cases written in Rust under the `tests/` directory.
 
+- **Check formatting and lint code**
+  ```bash
+  make lint
+  ```
+  Runs `cargo fmt` and `cargo clippy` to check formatting and enforce lint rules. Fails on any warnings.
+
+- **Generate code coverage report**
+  ```bash
+  make coverage
+  ```
+  Runs unit tests using `cargo tarpaulin` to produce an HTML coverage report. Automatically opens the report.
+
 - **Generate PDF report**
   ```bash
-  make report
+  make docs
   ```
-  Compiles the LaTeX report located in `report/report.tex` into `report/report.pdf`.
+  Compiles the LaTeX report from `report/report.tex` into `report/report.pdf` and copies it to the root as `report.pdf`.
+
+- **Clean build artifacts and reports**
+  ```bash
+  make clean
+  ```
+  Removes build artifacts, LaTeX auxiliary files, generated reports, and the coverage HTML report.
+```
 
 ### Running the Program
 
@@ -115,12 +143,16 @@ The interface runs in a continuous loop, accepting commands and assignments unti
 
 ```
 .
-├── src/              # Source code for the spreadsheet engine
-├── tests/            # Rust test cases
+├── spreadsheet_ui/   # Front and back end files for the extension 
+|   ├── client/
+|   ├── core/
+|   ├── server/
+|   └── Cargo.toml
+├── src/              # Source code for the spreadsheet along with unit and integration tests.
 ├── report/           # LaTeX report and related files
-├── Makefile          # Build automation
-├── Cargo.toml        # Cargo configuration and dependencies
-└── README.md         # Project documentation
+├── Makefile
+├── Cargo.toml
+└── README.md
 ```
 
 ---

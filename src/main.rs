@@ -1,22 +1,46 @@
+//! Spreadsheet Engine
+//!
+//! This module implements a terminal-based spreadsheet application.
+//! It supports arithmetic operations, cell references, functions over cell ranges,
+//! dependency tracking, cycle detection, and recalculation ordering.
+//!
+//! Features include:
+//! - Integer-based cell values
+//! - Expressions with +, -, *, /
+//! - Range-based functions: SUM, AVG, MIN, MAX, STDEV
+//! - Special function: SLEEP (accumulates delay from evaluated values)
+//! - Dependency tracking with cycle detection
+//! - Scrollable 10x10 view over a larger grid
+
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{self, Write};
 
+/// Represents parsed expressions that can be evaluated.
 #[derive(Clone, Debug)]
 enum Expression {
+    /// Integer literal value
     Literal(i32),
+    /// Reference to another cell (row, col)
     Cell(usize, usize),
+    /// Binary operation (e.g., A1 + B2)
     BinaryOp(Box<Expression>, char, Box<Expression>),
+    /// Function call with name and argument string
     Function(String, String),
 }
 
+/// Represents parsed arguments passed to functions.
 enum FunctionArg {
+    /// Range of cells (inclusive): ((row1, col1), (row2, col2))
     Range((usize, usize), (usize, usize)), // ((row1, col1), (row2, col2))
     #[allow(dead_code)]
+    /// Single cell reference
     Cell(usize, usize), // (row, col)
     #[allow(dead_code)]
+    /// Literal value
     Literal(i32),
 }
 
+/// Spreadsheet model containing state, evaluation logic, and cell data.
 struct Spreadsheet {
     grid: Vec<Vec<i32>>,
     rows: usize,
@@ -33,6 +57,7 @@ struct Spreadsheet {
 }
 
 impl Spreadsheet {
+    /// Creates a new spreadsheet with specified dimensions.
     fn new(rows: usize, cols: usize) -> Self {
         let grid = vec![vec![0; cols]; rows];
         Self {
@@ -52,7 +77,7 @@ impl Spreadsheet {
     }
 
     // --- Utility functions unchanged ---
-
+    /// Converts column index to spreadsheet label (e.g., 0 -> A, 27 -> AB).
     fn column_index_to_label(mut index: usize) -> String {
         let mut label = String::new();
         index += 1;
@@ -64,6 +89,7 @@ impl Spreadsheet {
         label
     }
 
+    /// Converts spreadsheet label to column index (e.g., A -> 0, AB -> 27).
     fn column_label_to_index(label: &str) -> Option<usize> {
         let mut index = 0;
         for c in label.chars() {
@@ -75,6 +101,7 @@ impl Spreadsheet {
         Some(index - 1)
     }
 
+    /// Displays a 10x10 portion of the spreadsheet.
     fn print_grid(&self) {
         if !self.output_enabled {
             return;
@@ -98,16 +125,19 @@ impl Spreadsheet {
         }
     }
 
+    /// Updates a cell with a given value directly (used internally).
     fn update_cell(&mut self, row: usize, col: usize, value: i32) {
         if row < self.rows && col < self.cols {
             self.grid[row][col] = value;
         }
     }
 
+    /// Retrieves the current value of a cell, if present.
     fn get_cell_value(&self, row: usize, col: usize) -> Option<i32> {
         self.grid.get(row)?.get(col).copied()
     }
 
+    /// Parses spreadsheet label (e.g., "B3") to (row, col) indices.
     fn parse_cell_reference(cell: &str) -> Option<(usize, usize)> {
         let split_index = cell.find(|c: char| c.is_ascii_digit())?;
         let (col_part, row_part) = cell.split_at(split_index);
@@ -122,6 +152,7 @@ impl Spreadsheet {
         Some((row_raw - 1, col))
     }
 
+    /// Parses an operand which may be a number or a cell reference.
     fn parse_operand(&self, operand: &str) -> Result<Expression, String> {
         let operand = operand.trim();
         operand
@@ -144,6 +175,7 @@ impl Spreadsheet {
             })
     }
 
+    /// Parses full expressions (e.g., "A1 + 2", "SUM(A1:B2)", etc).
     fn parse_expression(&self, expr: &str) -> Result<Expression, String> {
         let trimmed = expr.trim();
 
@@ -252,9 +284,7 @@ impl Spreadsheet {
 
     // --- Dependency Methods ---
 
-    // Extract all cell references (dependencies) from an expression.
-    /// Extract dependencies by walking the expression tree.
-    /// For SUM functions, if the argument decodes to a range, all cells in that range are added.
+    /// Extracts all cells referenced by an expression.
     fn extract_dependencies(expr: &Expression) -> HashSet<(usize, usize)> {
         let mut deps = HashSet::new();
 
@@ -296,9 +326,7 @@ impl Spreadsheet {
         deps
     }
 
-    /// Update dependencies for a given cell:
-    /// Remove the old dependencies, then extract from the new expression and update both
-    /// forward and reverse dependency maps.
+    /// Updates dependency maps when a cell’s expression changes.
     fn update_dependencies(
         &mut self,
         cell: (usize, usize),
@@ -325,8 +353,7 @@ impl Spreadsheet {
         Ok(())
     }
 
-    /// Cycle detection remains unchanged.
-    /// It simulates applying the new dependencies for 'start' and then runs a DFS to detect cycles.
+    /// Detects cyclic dependencies from a given cell.
     fn detect_cycle(&self, start: (usize, usize), new_deps: &HashSet<(usize, usize)>) -> bool {
         let mut visited = HashSet::new();
         let mut stack = HashSet::new();
@@ -361,8 +388,7 @@ impl Spreadsheet {
         dfs(start, &simulated, &mut visited, &mut stack)
     }
 
-    /// Compute a topological order of all cells that are affected by a change starting from `start`.
-    /// This orders cells so that any given cell is recalculated only after its dependencies.
+    /// Computes topological order of affected cells from a change.
     fn topological_order(&self, start: (usize, usize)) -> Vec<(usize, usize)> {
         let mut affected = HashSet::new();
         let mut queue = VecDeque::new();
@@ -422,8 +448,7 @@ impl Spreadsheet {
         sorted
     }
 
-    /// Recalculate all dependent cells (including the changed one) in the proper dependency order.
-    /// This version uses topological sorting to ensure that a cell’s dependencies are updated first.
+    /// Recalculates all affected cells in topological order.
     fn recalculate_dependents(&mut self, cell: (usize, usize)) -> Result<(), String> {
         // Reset total sleep time for this recalculation run
         self.total_sleep_secs = 0;
@@ -475,7 +500,7 @@ impl Spreadsheet {
 
     // --- End Dependency Methods ---
 
-    // --- Evaluation methods (unchanged) ---
+    /// Evaluates the given expression tree to compute an integer value.
     fn evaluate_expression(&mut self, expr: &Expression) -> Result<i32, String> {
         match expr {
             Expression::Literal(v) => Ok(*v),
@@ -515,6 +540,7 @@ impl Spreadsheet {
         }
     }
 
+    /// Parses and validates arguments to functions like SUM, SLEEP, etc.
     fn parse_function_argument_static(arg: &str) -> Result<FunctionArg, String> {
         let trimmed = arg.trim();
 
@@ -537,7 +563,7 @@ impl Spreadsheet {
         }
     }
 
-    // Keep your original method for use in evaluation contexts
+    /// Same as above, but includes bounds checking against current grid size.
     fn parse_function_argument(&self, arg: &str) -> Result<FunctionArg, String> {
         // First use the static method to parse the argument
         let parsed = Self::parse_function_argument_static(arg)?;
@@ -584,6 +610,8 @@ impl Spreadsheet {
     }
 
     // --- Function stubs ---
+
+    /// Handles the `SLEEP` function. Returns value but accumulates delay.
     fn handle_sleep(&mut self, arg: &str) -> Result<i32, String> {
         match self.parse_function_argument(arg)? {
             FunctionArg::Literal(secs) => {
@@ -608,6 +636,7 @@ impl Spreadsheet {
         }
     }
 
+    /// Computes the sum over a given cell range.
     fn handle_sum(&self, arg: &str) -> Result<i32, String> {
         // SAFETY: `parse_expression` already guarantees `arg` is a valid range.
         let FunctionArg::Range((start_row, start_col), (end_row, end_col)) =
@@ -631,6 +660,7 @@ impl Spreadsheet {
         Ok(sum)
     }
 
+    /// Computes the maximum value in a cell range.
     fn handle_max(&self, arg: &str) -> Result<i32, String> {
         let FunctionArg::Range((start_row, start_col), (end_row, end_col)) =
             self.parse_function_argument(arg)?
@@ -655,6 +685,7 @@ impl Spreadsheet {
         max_val.ok_or_else(|| "MAX of empty range".to_string())
     }
 
+    /// Computes the minimum value in a cell range.
     fn handle_min(&self, arg: &str) -> Result<i32, String> {
         let FunctionArg::Range((start_row, start_col), (end_row, end_col)) =
             self.parse_function_argument(arg)?
@@ -680,6 +711,7 @@ impl Spreadsheet {
         min_val.ok_or_else(|| "MIN of empty range".to_string())
     }
 
+    /// Computes the average of a cell range.
     fn handle_avg(&self, arg: &str) -> Result<i32, String> {
         // Get range from argument
         let FunctionArg::Range((start_row, start_col), (end_row, end_col)) =
@@ -706,6 +738,7 @@ impl Spreadsheet {
         Ok(sum / count)
     }
 
+    /// Computes the sample standard deviation of a cell range.
     fn handle_stdev(&self, arg: &str) -> Result<i32, String> {
         // Get range from argument
         let FunctionArg::Range((start_row, start_col), (end_row, end_col)) =
@@ -749,7 +782,7 @@ impl Spreadsheet {
         Ok(variance.sqrt().round() as i32)
     }
 
-    // --- Assignment & Dependency Methods (with cycle detection and recalculation) ---
+    /// Parses and applies a cell assignment from user input.
     fn handle_assignment(&mut self, input: &str) -> Result<(), String> {
         let parts: Vec<&str> = input.splitn(2, '=').collect();
         if parts.len() != 2 {
@@ -809,6 +842,7 @@ impl Spreadsheet {
         Ok(()) // Always return Ok unless cycle detected
     }
 
+    /// Scrolls the visible window using 'w', 'a', 's', or 'd'.
     fn scroll(&mut self, dir: &str) {
         match dir {
             // Scroll up if possible
@@ -839,6 +873,7 @@ impl Spreadsheet {
         }
     }
 
+    /// Scrolls to a specific cell reference.
     fn handle_scroll_to(&mut self, input: &str) -> Result<(), String> {
         let parts: Vec<&str> = input.split_whitespace().collect();
         if parts.len() != 2 {
@@ -856,6 +891,7 @@ impl Spreadsheet {
         }
     }
 
+    /// Processes an input command (assignment, scroll, output toggle).
     fn process_input(&mut self, input: &str) -> Result<(), String> {
         let trimmed = input.trim().to_lowercase();
         match trimmed.as_str() {
@@ -878,6 +914,9 @@ impl Spreadsheet {
     }
 }
 
+
+/// Entry point for the spreadsheet application.
+/// Parses command-line arguments and runs the input loop.
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 3 {

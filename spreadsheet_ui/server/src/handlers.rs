@@ -1,11 +1,11 @@
-use rocket::serde::json::Json;
-use rocket::State;
 use rocket::http::Status;
 use rocket::response::status;
+use rocket::serde::json::Json;
+use rocket::State;
 
 use crate::models::{
-    ApiResponse, SpreadsheetMetadata, SpreadsheetData, 
-    NewSpreadsheet, UpdateSpreadsheet, CellUpdates
+    ApiResponse, CellUpdates, NewSpreadsheet, SpreadsheetData, SpreadsheetMetadata,
+    UpdateSpreadsheet,
 };
 use crate::storage::Storage;
 
@@ -13,7 +13,7 @@ use crate::storage::Storage;
 #[get("/spreadsheets")]
 pub fn list_spreadsheets(storage: &State<Storage>) -> Json<ApiResponse<Vec<SpreadsheetMetadata>>> {
     let spreadsheets = storage.list_spreadsheets();
-    
+
     Json(ApiResponse {
         status: "success".to_string(),
         data: Some(spreadsheets),
@@ -22,8 +22,11 @@ pub fn list_spreadsheets(storage: &State<Storage>) -> Json<ApiResponse<Vec<Sprea
 }
 
 // Get spreadsheet by ID
-#[get("/spreadsheets/<id>", rank=2)]
-pub fn get_spreadsheet(id: &str, storage: &State<Storage>) -> Result<Json<ApiResponse<SpreadsheetData>>, status::Custom<Json<ApiResponse<()>>>> {
+#[get("/spreadsheets/<id>", rank = 2)]
+pub fn get_spreadsheet(
+    id: &str,
+    storage: &State<Storage>,
+) -> Result<Json<ApiResponse<SpreadsheetData>>, status::Custom<Json<ApiResponse<()>>>> {
     match storage.get_spreadsheet(id) {
         Some(spreadsheet) => Ok(Json(ApiResponse {
             status: "success".to_string(),
@@ -44,15 +47,15 @@ pub fn get_spreadsheet(id: &str, storage: &State<Storage>) -> Result<Json<ApiRes
 // Create new spreadsheet
 #[post("/spreadsheets", data = "<new_spreadsheet>")]
 pub fn create_spreadsheet(
-    new_spreadsheet: Json<NewSpreadsheet>, 
-    storage: &State<Storage>
+    new_spreadsheet: Json<NewSpreadsheet>,
+    storage: &State<Storage>,
 ) -> Json<ApiResponse<SpreadsheetData>> {
     let spreadsheet = storage.create_spreadsheet(
         new_spreadsheet.name.clone(),
         new_spreadsheet.rows,
         new_spreadsheet.cols,
     );
-    
+
     Json(ApiResponse {
         status: "success".to_string(),
         data: Some(spreadsheet),
@@ -115,10 +118,12 @@ pub fn update_cells(
     updates: Json<CellUpdates>,
     storage: &State<Storage>,
 ) -> Result<Json<ApiResponse<SpreadsheetData>>, status::Custom<Json<ApiResponse<()>>>> {
-    let cell_updates: Vec<(usize, usize, String)> = updates.cells.iter()
+    let cell_updates: Vec<(usize, usize, String)> = updates
+        .cells
+        .iter()
         .map(|cell| (cell.row, cell.col, cell.value.clone()))
         .collect();
-    
+
     match storage.update_cells(id, &cell_updates) {
         Some(spreadsheet) => Ok(Json(ApiResponse {
             status: "success".to_string(),
@@ -179,9 +184,11 @@ pub fn import_spreadsheet(
     }
 }
 
-
 #[get("/spreadsheets/by_name?<name>", rank = 1)]
-pub fn get_spreadsheet_by_name(name: &str, storage: &State<Storage>) -> Result<Json<ApiResponse<SpreadsheetData>>, status::Custom<Json<ApiResponse<()>>>> {
+pub fn get_spreadsheet_by_name(
+    name: &str,
+    storage: &State<Storage>,
+) -> Result<Json<ApiResponse<SpreadsheetData>>, status::Custom<Json<ApiResponse<()>>>> {
     match storage.get_by_name(name) {
         Some(data) => Ok(Json(ApiResponse {
             status: "success".to_string(),
@@ -195,8 +202,6 @@ pub fn get_spreadsheet_by_name(name: &str, storage: &State<Storage>) -> Result<J
                 data: None,
                 message: Some(format!("Spreadsheet with name '{}' not found", name)),
             }),
-        ))
+        )),
     }
 }
-
-

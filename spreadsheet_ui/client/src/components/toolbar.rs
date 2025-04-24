@@ -1,6 +1,6 @@
+use wasm_bindgen::{closure::Closure, JsCast, JsValue};
+use web_sys::{Event, File, FileReader, HtmlElement, HtmlInputElement};
 use yew::prelude::*;
-use web_sys::{Event, File, FileReader, HtmlInputElement, HtmlElement};
-use wasm_bindgen::{JsCast, closure::Closure, JsValue};
 
 #[derive(Properties, PartialEq)]
 pub struct ToolbarProps {
@@ -67,11 +67,13 @@ pub fn toolbar(props: &ToolbarProps) -> Html {
                 on_export.emit(());
             });
 
-            button.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
+            button
+                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
                 .unwrap();
 
             Box::new(move || {
-                button.remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
+                button
+                    .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
                     .unwrap();
                 closure.forget();
             }) as Box<dyn FnOnce()>
@@ -99,11 +101,13 @@ pub fn toolbar(props: &ToolbarProps) -> Html {
                 }
             });
 
-            button.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
+            button
+                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
                 .unwrap();
 
             Box::new(move || {
-                button.remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
+                button
+                    .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
                     .unwrap();
                 closure.forget();
             }) as Box<dyn FnOnce()>
@@ -133,16 +137,22 @@ pub fn toolbar(props: &ToolbarProps) -> Html {
                 }
             });
 
-            button.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
+            button
+                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
                 .unwrap();
 
             Box::new(move || {
-                button.remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
+                button
+                    .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
                     .unwrap();
                 closure.forget();
             }) as Box<dyn FnOnce()>
         },
-        (load_button_ref.clone(), props.on_load_by_name.clone(), props.on_list_spreadsheets.clone()),
+        (
+            load_button_ref.clone(),
+            props.on_load_by_name.clone(),
+            props.on_list_spreadsheets.clone(),
+        ),
     );
 
     html! {
@@ -151,12 +161,12 @@ pub fn toolbar(props: &ToolbarProps) -> Html {
             <button ref={export_button_ref}>{"Export CSV"}</button>
             <button ref={save_button_ref}>{"Save"}</button>
             <button ref={load_button_ref}>{"Load"}</button>
-            <input 
-                type="file" 
-                accept=".csv" 
+            <input
+                type="file"
+                accept=".csv"
                 ref={import_input_ref}
                 onchange={on_import_change}
-                class="hidden-file-input" 
+                class="hidden-file-input"
             />
         </div>
     }

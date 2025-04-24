@@ -1,4 +1,3 @@
-
 pub mod spreadsheet;
 use std::collections::{HashMap, HashSet};
 
@@ -9,11 +8,11 @@ pub fn run_cli() {
 
 #[cfg(feature = "wasm")]
 pub mod wasm {
-    use wasm_bindgen::prelude::*;
     use super::spreadsheet::Spreadsheet;
+    use wasm_bindgen::prelude::*;
 
     #[wasm_bindgen]
-    #[derive(Clone, PartialEq)] 
+    #[derive(Clone, PartialEq)]
     pub struct WasmSheet {
         inner: Spreadsheet,
     }
@@ -23,7 +22,9 @@ pub mod wasm {
         #[wasm_bindgen(constructor)]
         pub fn new(rows: usize, cols: usize) -> Self {
             console_error_panic_hook::set_once();
-            WasmSheet { inner: Spreadsheet::new(rows, cols) }
+            WasmSheet {
+                inner: Spreadsheet::new(rows, cols),
+            }
         }
 
         #[wasm_bindgen]
@@ -67,12 +68,11 @@ pub mod wasm {
 
         #[wasm_bindgen]
         pub fn import_csv(&mut self, csv_data: &str) -> Result<(), JsValue> {
-            self.inner.import_csv(csv_data)
-                .map_err(|e| {
-                    let error_msg = format!("Import failed: {}", e);
-                    web_sys::console::error_1(&JsValue::from_str(&error_msg));
-                    JsValue::from_str(&error_msg)
-                })
+            self.inner.import_csv(csv_data).map_err(|e| {
+                let error_msg = format!("Import failed: {}", e);
+                web_sys::console::error_1(&JsValue::from_str(&error_msg));
+                JsValue::from_str(&error_msg)
+            })
         }
 
         #[wasm_bindgen]
@@ -89,7 +89,7 @@ pub mod wasm {
             // Create a Blob and download URL
             let blob = web_sys::Blob::new_with_u8_array_sequence(&js_sys::Array::of1(&array))?;
             let url = web_sys::Url::create_object_url_with_blob(&blob)?;
-            
+
             // Create and trigger a download link
             let window = web_sys::window().unwrap();
             let document = window.document().unwrap();
@@ -97,7 +97,7 @@ pub mod wasm {
             a.set_attribute("href", &url)?;
             a.set_attribute("download", filename)?;
             a.dyn_ref::<web_sys::HtmlElement>().unwrap().click();
-            
+
             web_sys::Url::revoke_object_url(&url)?;
             Ok(())
         }
@@ -111,7 +111,5 @@ pub mod wasm {
         pub fn column_label_to_index(label: &str) -> Option<usize> {
             Spreadsheet::column_label_to_index(label)
         }
-
-
     }
 }

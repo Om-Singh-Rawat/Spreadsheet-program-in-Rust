@@ -28,7 +28,7 @@ coverage:
 	xdg-open tarpaulin-report.html
 
 # ===== Report Generation =====
-report: $(REPORT_PDF)
+docs: $(REPORT_PDF)
 
 $(REPORT_PDF): $(REPORT_SRC)
 	pdflatex -output-directory=$(REPORT_DIR) $(REPORT_SRC)
