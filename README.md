@@ -165,7 +165,7 @@ The interface runs in a continuous loop, accepting commands and assignments unti
 
 ---
 
-## Web-Based Extension (Browser Spreadsheet UI)
+## 🌐 Web-Based Extension (Browser Spreadsheet UI)
 
 This project also features a web-based spreadsheet extension located in the `spreadsheet_ui/` directory. It consists of:
 
@@ -173,8 +173,6 @@ This project also features a web-based spreadsheet extension located in the `spr
 - A **backend server** written in Rust using [Rocket](https://rocket.rs) to handle login/signup and spreadsheet synchronization.
 
 #### Dependencies
-
-### 🌐 Web Extension (`spreadsheet_ui/`)
 - `wasm-pack` (Install via `cargo install wasm-pack`)
 - `wasm-bindgen`
 - `yew`
