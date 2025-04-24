@@ -44,6 +44,12 @@ Entirely built with Rust's standard library (std).
   ```
   Runs unit tests using `cargo tarpaulin` to produce an HTML coverage report. Automatically opens the report.
 
+- **Generate PDF report only**
+  ```bash
+  make report
+  ```
+  Compiles the LaTeX report from `report/report.tex` into `report/report.pdf` and copies it to the root as `report.pdf`.
+
 - **Generate PDF report and rustdoc documentation**
   ```bash
   make docs
