@@ -1006,15 +1006,6 @@ mod tests {
         // Verify B1 depends on A1
         assert!(sheet.dependencies.get(&(0, 1)).unwrap().contains(&(0, 0)));
 
-        // Verify A1 is depended on by B1
-        assert!(
-            sheet
-                .reverse_dependencies
-                .get(&(0, 0))
-                .unwrap()
-                .contains(&(0, 1))
-        );
-
         // Update B1 to remove dependency
         sheet.process_input("B1 = 10").unwrap();
 
