@@ -6,8 +6,6 @@ This is a terminal-based spreadsheet application written in Rust. It supports in
 
 ## Build and Usage
 
-Sure! Here's a copy-paste-ready markdown snippet you can insert directly into your `README.md`:
-
 ### Build Options
 
 - **Build the binary executable**
