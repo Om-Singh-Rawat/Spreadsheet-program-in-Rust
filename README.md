@@ -49,7 +49,6 @@ This is a terminal-based spreadsheet application written in Rust. It supports in
   make clean
   ```
   Removes build artifacts, LaTeX auxiliary files, generated reports, and the coverage HTML report.
-```
 
 ### Running the Program
 
