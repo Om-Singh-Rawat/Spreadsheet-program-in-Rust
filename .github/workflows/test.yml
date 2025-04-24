@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 jobs:
   test:
-    name: Run Integration Tests
+    name: Run Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -13,8 +13,5 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
-
-      - name: Run only integration tests
-        run: cargo test --test integration
+      - name: Run tests
+        run: cargo test
