@@ -963,10 +963,6 @@ mod tests {
     fn create_sheet(rows: usize, cols: usize) -> Spreadsheet {
         Spreadsheet::new(rows, cols)
     }
-    #[test]
-    fn dummy_test() {
-        assert_eq!(2 + 2, 4);
-    }
 
     #[test]
     fn test_literal_assignment() {
@@ -1515,5 +1511,61 @@ mod tests {
         // Division
         sheet.process_input("B4 = A2 / A1").unwrap();
         assert_eq!(sheet.get_cell_value(3, 1), Some(1));
+    }
+
+    #[test]
+    fn test_complex_sleep_and_dependency_chain() {
+        let mut sheet = Spreadsheet::new(4, 4);
+        sheet.output_enabled = false; // equivalent to "disable_output"
+
+        sheet.process_input("B1 = SLEEP(A1)").unwrap();
+        sheet.process_input("C1 = A1 + B1").unwrap();
+        sheet.process_input("C2 = B1 + A1").unwrap();
+        sheet.process_input("D1 = SLEEP(C1)").unwrap();
+        sheet.process_input("D2 = SLEEP(C2)").unwrap();
+        sheet.process_input("A1 = 1").unwrap();
+
+        assert_eq!(sheet.get_cell_value(0, 0), Some(1)); // A1
+        assert_eq!(sheet.get_cell_value(0, 1), Some(1)); // B1
+        assert_eq!(sheet.get_cell_value(0, 2), Some(2)); // C1
+        assert_eq!(sheet.get_cell_value(1, 2), Some(2)); // C2
+        assert_eq!(sheet.get_cell_value(0, 3), Some(2)); // D1
+        assert_eq!(sheet.get_cell_value(1, 3), Some(2)); // D2
+    }
+
+    #[test]
+    fn test_stats_functions_sleep_and_recalculation() {
+        let mut sheet = create_sheet(26, 26);
+
+        sheet.output_enabled = false;
+
+        sheet.process_input("C1 = MAX(A1:A26)").unwrap();
+        sheet.process_input("B1 = SLEEP(C1)").unwrap();
+
+        sheet.process_input("C2 = MIN(A1:A26)").unwrap();
+        sheet.process_input("B2 = SLEEP(C2)").unwrap();
+
+        sheet.process_input("C3 = AVG(A1:A26)").unwrap();
+        sheet.process_input("B3 = SLEEP(C3)").unwrap();
+
+        sheet.process_input("C4 = STDEV(A1:A26)").unwrap();
+        sheet.process_input("B4 = SLEEP(C4)").unwrap();
+
+        sheet.process_input("D1 = MAX(A1:B4)").unwrap();
+        sheet.process_input("E1 = SLEEP(D1)").unwrap();
+
+        sheet.process_input("A1 = 2").unwrap();
+
+        assert_eq!(sheet.get_cell_value(0, 0), Some(2)); // A1
+        assert_eq!(sheet.get_cell_value(0, 2), Some(2)); // C1
+        assert_eq!(sheet.get_cell_value(0, 1), Some(2)); // B1
+        assert_eq!(sheet.get_cell_value(1, 2), Some(0)); // C2
+        assert_eq!(sheet.get_cell_value(1, 1), Some(0)); // B2
+        assert_eq!(sheet.get_cell_value(2, 2), Some(0)); // C3
+        assert_eq!(sheet.get_cell_value(2, 1), Some(0)); // B3
+        assert_eq!(sheet.get_cell_value(3, 2), Some(0)); // C4
+        assert_eq!(sheet.get_cell_value(3, 1), Some(0)); // B4
+        assert_eq!(sheet.get_cell_value(0, 3), Some(2)); // D1
+        assert_eq!(sheet.get_cell_value(0, 4), Some(2)); // E1
     }
 }
