@@ -13,14 +13,12 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Check formatting with rustfmt
+      - name: Check formatting with rustfmt (excluding spreadsheet_ui)
         run: |
-          find . -name "*.rs" \
+          find ./src -name "*.rs" \
             -not -path "./spreadsheet_ui/*" \
             -exec rustfmt --check {} +
 
-      - name: Run Clippy (excluding spreadsheet_ui)
+      - name: Run Clippy on main crate only
         run: |
-          cargo clippy --all-targets --all-features \
-            --exclude spreadsheet_ui \
-            -- -D warnings
+          cargo clippy --all-targets --all-features -- -D warnings

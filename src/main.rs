@@ -1125,7 +1125,7 @@ mod tests {
             "'A1000 = 5' is not a valid integer or cell reference"
         );
 
-        let mut sheet = create_sheet(5, 5); // Columns A-C, Rows 1-5
+        let sheet = create_sheet(5, 5); // Columns A-C, Rows 1-5
         let result = sheet.parse_operand("E6");
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Cell E6 is out of bounds");

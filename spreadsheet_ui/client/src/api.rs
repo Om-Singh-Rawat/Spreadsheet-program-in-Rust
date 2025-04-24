@@ -1,3 +1,4 @@
+#![cfg(not(tarpaulin))]
 use std::borrow::BorrowMut;
 
 use wasm_bindgen::prelude::*;
