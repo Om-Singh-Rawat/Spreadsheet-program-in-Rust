@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{self, Write};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum Expression {
     Literal(i32),
     Cell(usize, usize),
@@ -497,7 +497,7 @@ impl Spreadsheet {
                             Ok(left_val / right_val)
                         }
                     }
-                    _ => Err("unknown operator".to_string()),
+                    _ => unreachable!("Operator should have been validated during parsing"),
                 }
             }
             Expression::Function(name, arg) => match name.as_str() {
@@ -507,7 +507,10 @@ impl Spreadsheet {
                 "AVG" => self.handle_avg(arg),
                 "SUM" => self.handle_sum(arg),
                 "STDEV" => self.handle_stdev(arg),
-                _ => Err(format!("Unknown function: {}", name)),
+                name => unreachable!(
+                    "Function '{}' should have been validated during parsing",
+                    name
+                ),
             },
         }
     }
@@ -599,7 +602,9 @@ impl Spreadsheet {
                 }
                 Ok(val) // return value as-is
             }
-            _ => Err("SLEEP expects a number or a cell reference".to_string()),
+            FunctionArg::Range(_, _) => {
+                unreachable!("SLEEP should never receive a range after validation")
+            }
         }
     }
 
@@ -627,41 +632,44 @@ impl Spreadsheet {
     }
 
     fn handle_max(&self, arg: &str) -> Result<i32, String> {
-        // Get range from argument
         let FunctionArg::Range((start_row, start_col), (end_row, end_col)) =
             self.parse_function_argument(arg)?
         else {
-            unreachable!("MAX argument should have been validated as a range during parsing")
+            unreachable!("MAX argument should have been validated as a range during parsing");
         };
 
-        let mut values = Vec::new();
+        let mut max_val: Option<i32> = None;
         for row in start_row.min(end_row)..=start_row.max(end_row) {
             for col in start_col.min(end_col)..=start_col.max(end_col) {
                 if let Some(value) = self.get_cell_value(row, col) {
-                    values.push(value);
+                    max_val = Some(match max_val {
+                        Some(current_max) => current_max.max(value),
+                        None => value,
+                    });
                 } else {
                     let cell_label = format!("{}{}", Self::column_index_to_label(col), row + 1);
                     return Err(format!("invalid cell in range: {}", cell_label));
                 }
             }
         }
-
-        Ok(*values.iter().max().unwrap())
+        max_val.ok_or_else(|| "MAX of empty range".to_string())
     }
 
     fn handle_min(&self, arg: &str) -> Result<i32, String> {
-        // Get range from argument
         let FunctionArg::Range((start_row, start_col), (end_row, end_col)) =
             self.parse_function_argument(arg)?
         else {
-            unreachable!("MIN argument should have been validated as a range during parsing")
+            unreachable!("MIN argument should have been validated as a range during parsing");
         };
 
-        let mut values = Vec::new();
+        let mut min_val: Option<i32> = None;
         for row in start_row.min(end_row)..=start_row.max(end_row) {
             for col in start_col.min(end_col)..=start_col.max(end_col) {
                 if let Some(value) = self.get_cell_value(row, col) {
-                    values.push(value);
+                    min_val = Some(match min_val {
+                        Some(current_min) => current_min.min(value),
+                        None => value,
+                    });
                 } else {
                     let cell_label = format!("{}{}", Self::column_index_to_label(col), row + 1);
                     return Err(format!("invalid cell in range: {}", cell_label));
@@ -669,7 +677,7 @@ impl Spreadsheet {
             }
         }
 
-        Ok(*values.iter().min().unwrap())
+        min_val.ok_or_else(|| "MIN of empty range".to_string())
     }
 
     fn handle_avg(&self, arg: &str) -> Result<i32, String> {
@@ -930,9 +938,9 @@ mod tests {
 
     #[test]
     fn test_printing() {
-        let mut sheet = create_sheet(0,8);
+        let mut sheet = create_sheet(0, 8);
         sheet.output_enabled = false;
-        assert_eq!(sheet.print_grid(), ());
+        sheet.print_grid();
     }
 
     #[test]
@@ -1086,7 +1094,7 @@ mod tests {
         assert!(result.is_err());
 
         let result = sheet.process_input("scroll_to invalid_cell");
-        assert_eq!(result.unwrap_err(), "invalid cell reference in scroll_to");   
+        assert_eq!(result.unwrap_err(), "invalid cell reference in scroll_to");
     }
 
     #[test]
@@ -1118,7 +1126,19 @@ mod tests {
         let result = sheet.process_input("A1000 = 5");
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "target cell out of bounds");
-        }
+
+        let result = sheet.parse_operand("A1000 = 5");
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "'A1000 = 5' is not a valid integer or cell reference"
+        );
+
+        let mut sheet = create_sheet(5, 5); // Columns A-C, Rows 1-5
+        let result = sheet.parse_operand("E6");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Cell E6 is out of bounds");
+    }
 
     #[test]
     fn test_parse_expression_edge_cases() {
@@ -1144,6 +1164,9 @@ mod tests {
 
         // Invalid: malformed cell
         assert!(sheet.process_input("A1 = B").is_err());
+
+        let result = sheet.parse_expression("AF11");
+        assert_eq!(result.unwrap_err(), "Cell AF11 is out of bounds");
     }
 
     #[test]
@@ -1154,31 +1177,6 @@ mod tests {
 
         let deps = sheet.dependencies.get(&(0, 1)).unwrap();
         assert_eq!(deps.len(), 1); // Set should not duplicate (A1 only once)
-    }
-
-    #[test]
-    fn test_stdev_invalid_and_empty_range() {
-        let mut sheet = create_sheet(5, 5);
-
-        let result = sheet.process_input("A1 = SUM(A1:A3");
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "invalid function declaration");
-
-        // STDEV with one element
-        sheet.process_input("A1 = 5").unwrap();
-        let result = sheet.process_input("B1 = STDEV(A1:A1)");
-        assert!(result.is_ok());
-        assert_eq!(sheet.get_cell_value(0, 1), Some(0));
-
-        // STDEV with empty range
-        let result = sheet.process_input("B2 = STDEV()");
-        assert!(result.is_err());
-
-        let result = sheet.process_input("A1 = (A1:A3)");
-        assert_eq!(result.unwrap_err(), "empty function name");
-
-        let result = sheet.process_input("A1 = S@M(A1:A3)");
-        assert_eq!(result.unwrap_err(), "invalid function name: 'S@M'");
     }
 
     #[test]
@@ -1315,7 +1313,7 @@ mod tests {
         sheet.process_input("C1 = SLEEP(-1)").unwrap();
         assert_eq!(sheet.get_cell_value(0, 2), Some(-1));
         let result = sheet.process_input("C3 = SLEEP(A1:B2)");
-        assert!(result.is_err()," invalid function argument");
+        assert!(result.is_err(), " invalid function argument");
     }
     #[test]
     fn test_sum_function() {
@@ -1343,18 +1341,18 @@ mod tests {
     fn test_min_max_functions() {
         let mut sheet = create_sheet(5, 5);
         sheet.process_input("A1 = 4").unwrap();
-        sheet.process_input("A2 = 2").unwrap();
+        sheet.process_input("A2 = -1").unwrap();
         sheet.process_input("A3 = 6").unwrap();
 
         // Test MIN function
-        sheet.process_input("B1 = MIN(A1:A3)").unwrap();
-        assert_eq!(sheet.get_cell_value(0, 1), Some(2));
+        sheet.process_input("C1 = MIN(A1:B3)").unwrap();
+        assert_eq!(sheet.get_cell_value(0, 2), Some(-1));
 
-        let result = sheet.process_input("B1 = MIN()");
+        let result = sheet.process_input("C1 = MIN()");
         assert!(result.is_err());
         // Test MAX function
-        sheet.process_input("B2 = MAX(A1:A3)").unwrap();
-        assert_eq!(sheet.get_cell_value(1, 1), Some(6));
+        sheet.process_input("C2 = MAX(A1:B3)").unwrap();
+        assert_eq!(sheet.get_cell_value(1, 2), Some(6));
 
         let result = sheet.process_input("B1 = MAX()");
         assert!(result.is_err());
@@ -1369,6 +1367,26 @@ mod tests {
         sheet.process_input("B1 = STDEV(A1:A3)").unwrap();
         // Standard deviation of 2,4,6 is 2
         assert_eq!(sheet.get_cell_value(0, 1), Some(2));
+
+        let result = sheet.process_input("A1 = SUM(A1:A3");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "invalid function declaration");
+
+        // STDEV with one element
+        sheet.process_input("A1 = 5").unwrap();
+        let result = sheet.process_input("B1 = STDEV(A1:A1)");
+        assert!(result.is_ok());
+        assert_eq!(sheet.get_cell_value(0, 1), Some(0));
+
+        // STDEV with empty range
+        let result = sheet.process_input("B2 = STDEV()");
+        assert!(result.is_err());
+
+        let result = sheet.process_input("A1 = (A1:A3)");
+        assert_eq!(result.unwrap_err(), "empty function name");
+
+        let result = sheet.process_input("A1 = S@M(A1:A3)");
+        assert_eq!(result.unwrap_err(), "invalid function name: 'S@M'");
     }
 
     #[test]
@@ -1404,7 +1422,7 @@ mod tests {
 
         // STDEV with insufficient values
         sheet.process_input("A1 = 5").unwrap();
-        let result = sheet.process_input("B1 = STDEV(A1:A1)");
+        sheet.process_input("B1 = STDEV(A1:A1)").unwrap();
         assert_eq!(sheet.get_cell_value(0, 1), Some(0));
 
         // Function case insensitivity
@@ -1416,8 +1434,7 @@ mod tests {
         // Multiple operators (not allowed)
         let result = sheet.process_input("A1 = 5 + 3 * 2");
         assert!(result.is_err());
-
-        }
+    }
 
     #[test]
     fn test_scroll_boundary_conditions() {
@@ -1459,7 +1476,7 @@ mod tests {
 
         // Subtraction
         sheet.process_input("B2 = A2 - A1").unwrap();
-        assert_eq!(sheet.get_cell_value(1, 1), Some(1));        
+        assert_eq!(sheet.get_cell_value(1, 1), Some(1));
 
         // Multiplication
         sheet.process_input("B3 = A1 * A2").unwrap();
