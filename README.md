@@ -10,9 +10,9 @@ This is a terminal-based spreadsheet application written in Rust. It supports in
 
 Entirely built with Rust's standard library (std).
 
-## Build and Usage
+### Build and Usage
 
-### Build Options
+#### Build Options
 
 - **Build the binary executable**
   ```bash
@@ -59,7 +59,7 @@ Entirely built with Rust's standard library (std).
 
 ---
 
-### Running the Program
+#### Running the Program
 
 ```bash
 ./target/release/spreadsheet <rows> <columns>
@@ -69,9 +69,9 @@ Launches the spreadsheet with the specified number of rows and columns.
 
 ---
 
-## Features
+### Features
 
-### Cell Assignments
+#### Cell Assignments
 
 Cells can be assigned values directly or computed from other cells using basic arithmetic operations.
 
@@ -87,7 +87,7 @@ C1 = A1 * B1
 
 ---
 
-### Built-in Functions
+#### Built-in Functions
 
 The spreadsheet supports a variety of built-in functions. All except `SLEEP` operate over **ranges of cells**:
 
@@ -107,7 +107,7 @@ C3 = MAX(D1:D4)
 
 ---
 
-### Special Function: `SLEEP`
+#### Special Function: `SLEEP`
 
 The `SLEEP` function is treated differently:
 
@@ -122,7 +122,7 @@ A1 = SLEEP(5)
 
 ---
 
-### Recalculation Engine
+#### Recalculation Engine
 
 - After every user input, the spreadsheet performs a **full recalculation** of all affected cells.
 - Cells are recomputed regardless of whether their final value changes.
@@ -130,7 +130,7 @@ A1 = SLEEP(5)
 
 ---
 
-### Interactive Commands
+#### Interactive Commands
 
 The spreadsheet interface supports the following interactive commands:
 
@@ -144,7 +144,7 @@ The interface runs in a continuous loop, accepting commands and assignments unti
 
 ---
 
-## Project Structure
+### Project Structure
 
 ```
 .
@@ -157,7 +157,7 @@ The interface runs in a continuous loop, accepting commands and assignments unti
 
 ---
 
-## Notes
+### Notes
 
 - All recalculations are done using tracked dependencies between cells.
 - The system ensures deterministic updates and detects invalid expressions early.
@@ -172,7 +172,7 @@ This project also features a web-based spreadsheet extension located in the `spr
 - A **frontend** written in Rust using [Yew](https://yew.rs), compiled to WebAssembly using `wasm-pack`.
 - A **backend server** written in Rust using [Rocket](https://rocket.rs) to handle login/signup and spreadsheet synchronization.
 
-#### Dependencies
+### Dependencies
 - `wasm-pack` (Install via `cargo install wasm-pack`)
 - `wasm-bindgen`
 - `yew`
@@ -184,7 +184,7 @@ This project also features a web-based spreadsheet extension located in the `spr
 - `rocket` (for backend)
 - `rocket_cors` (for CORS support)
 
-#### 💻 Run the Extension
+### 💻 Run the Extension
 
 ```bash
 make ext1
@@ -197,7 +197,7 @@ This builds the frontend and starts both servers **simultaneously**:
 
 > Note: The frontend build output is placed in `spreadsheet_ui/server/static` and served by a static file server (Python) during development.
 
-#### 🧩 Features of the Extension
+### 🧩 Features of the Extension
 
 - **User Login/Signup** with credential storage (currently local, pluggable to a DB)
 - **Each user has their own spreadsheet** (persisted on the backend)
@@ -212,7 +212,7 @@ This builds the frontend and starts both servers **simultaneously**:
 
 ---
 
-## Project Structure (Extension)
+### Project Structure (Extension)
 
 ```
 .
