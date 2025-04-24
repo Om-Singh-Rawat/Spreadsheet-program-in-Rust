@@ -8,7 +8,6 @@ This is a terminal-based spreadsheet application written in Rust. It supports in
 
 Sure! Here's a copy-paste-ready markdown snippet you can insert directly into your `README.md`:
 
-```markdown
 ### Build Options
 
 - **Build the binary executable**
