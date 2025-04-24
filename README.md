@@ -4,15 +4,11 @@ This is a terminal-based spreadsheet application written in Rust. It supports in
 
 ---
 
-## Dependencies
-
-### 🧱 Core (Terminal-Based Spreadsheet)
+## 🧱 Core (Terminal-Based Spreadsheet)
 - `cargo` and `rustc` (Rust toolchain)
 - No external crates required
 
 Entirely built with Rust's standard library (std).
-
----
 
 ## Build and Usage
 
@@ -169,7 +165,7 @@ The interface runs in a continuous loop, accepting commands and assignments unti
 
 ---
 
-### Web-Based Extension (Browser Spreadsheet UI)
+## Web-Based Extension (Browser Spreadsheet UI)
 
 This project also features a web-based spreadsheet extension located in the `spreadsheet_ui/` directory. It consists of:
 
