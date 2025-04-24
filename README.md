@@ -75,6 +75,7 @@ To run this project and its web-based extension, you'll need the following:
   make clean
   ```
   Removes build artifacts, LaTeX auxiliary files, generated reports, and the coverage HTML report.
+<<<<<<< HEAD
 
 ---
 
@@ -90,6 +91,8 @@ This project also features a web-based spreadsheet extension located in the `spr
 ```bash
 make ext1
 ```
+=======
+>>>>>>> a344e13716e6607f0d0261681c495bdc53c9fc6b
 
 This builds the frontend and starts both servers **simultaneously**:
 
