@@ -914,7 +914,6 @@ impl Spreadsheet {
     }
 }
 
-
 /// Entry point for the spreadsheet application.
 /// Parses command-line arguments and runs the input loop.
 fn main() {
