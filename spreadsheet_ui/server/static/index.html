@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+ <html lang="en">
+ <head>
+   <meta charset="UTF-8">
+   <title>Spreadsheet App</title>
+   <link rel="stylesheet" type="text/css" href="styles.css">
+   <script type="module">
+    import init from './loader.js';
+    init().then(() => {
+      console.log("WASM initialized");
+    });
+  </script>
+ </head>
+ <body>
+   <div id="root"></div>
+ </body>
+ </html>
