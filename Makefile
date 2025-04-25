@@ -27,13 +27,6 @@ coverage:
 	xdg-open tarpaulin-report.html
 
 # ===== Documentation Generation =====
-report: $(REPORT_PDF)
-
-$(REPORT_PDF): $(REPORT_SRC)
-	pdflatex -output-directory=$(REPORT_DIR) $(REPORT_SRC)
-	cp $(REPORT_DIR)/report.pdf $(REPORT_PDF)
-
-
 docs: $(REPORT_PDF)
 	cargo doc --document-private-items
 	cargo doc --open

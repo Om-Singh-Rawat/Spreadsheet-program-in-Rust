@@ -516,10 +516,7 @@ impl Spreadsheet {
     fn evaluate_expression(&mut self, expr: &Expression) -> Result<i32, String> {
         match expr {
             Expression::Literal(v) => Ok(*v),
-            Expression::Cell(r, c) => self.get_cell_value(*r, *c).ok_or_else(|| {
-                let col_label = Self::column_index_to_label(*c);
-                format!("invalid cell reference {}{}", col_label, r + 1)
-            }),
+            Expression::Cell(r, c) => Ok(self.grid[*r][*c]),
             Expression::BinaryOp(lhs, op, rhs) => {
                 let left_val = self.evaluate_expression(lhs)?;
                 let right_val = self.evaluate_expression(rhs)?;
@@ -561,9 +558,9 @@ impl Spreadsheet {
             let end = &end[1..];
 
             let start_pos = Self::parse_cell_reference(start)
-                .ok_or_else(|| format!("Invalid start cell: '{}'", start))?;
+                .ok_or_else(|| format!("invalid start cell: '{}'", start))?;
             let end_pos = Self::parse_cell_reference(end)
-                .ok_or_else(|| format!("Invalid end cell: '{}'", end))?;
+                .ok_or_else(|| format!("invalid end cell: '{}'", end))?;
 
             Ok(FunctionArg::Range(start_pos, end_pos))
         } else if let Some((row, col)) = Self::parse_cell_reference(trimmed) {
@@ -571,7 +568,7 @@ impl Spreadsheet {
         } else if let Ok(val) = trimmed.parse::<i32>() {
             Ok(FunctionArg::Literal(val))
         } else {
-            Err(format!("Invalid function argument: {}", trimmed))
+            Err(format!("invalid function argument: {}", trimmed))
         }
     }
 
@@ -633,9 +630,7 @@ impl Spreadsheet {
                 Ok(secs) // even negative values are returned
             }
             FunctionArg::Cell(r, c) => {
-                let val = self
-                    .get_cell_value(r, c)
-                    .ok_or_else(|| "Invalid cell in SLEEP".to_string())?;
+                let val = self.get_cell_value(r, c).unwrap_or(0);
 
                 if val > 0 {
                     self.total_sleep_secs += val as u64;
@@ -663,9 +658,6 @@ impl Spreadsheet {
             for col in start_col.min(end_col)..=start_col.max(end_col) {
                 if let Some(value) = self.get_cell_value(row, col) {
                     sum += value;
-                } else {
-                    let cell_label = format!("{}{}", Self::column_index_to_label(col), row + 1);
-                    return Err(format!("invalid cell in range: {}", cell_label));
                 }
             }
         }
@@ -688,9 +680,6 @@ impl Spreadsheet {
                         Some(current_max) => current_max.max(value),
                         None => value,
                     });
-                } else {
-                    let cell_label = format!("{}{}", Self::column_index_to_label(col), row + 1);
-                    return Err(format!("invalid cell in range: {}", cell_label));
                 }
             }
         }
@@ -713,9 +702,6 @@ impl Spreadsheet {
                         Some(current_min) => current_min.min(value),
                         None => value,
                     });
-                } else {
-                    let cell_label = format!("{}{}", Self::column_index_to_label(col), row + 1);
-                    return Err(format!("invalid cell in range: {}", cell_label));
                 }
             }
         }
@@ -740,9 +726,6 @@ impl Spreadsheet {
                 if let Some(value) = self.get_cell_value(row, col) {
                     sum += value;
                     count += 1;
-                } else {
-                    let cell_label = format!("{}{}", Self::column_index_to_label(col), row + 1);
-                    return Err(format!("invalid cell in range: {}", cell_label));
                 }
             }
         }
@@ -765,9 +748,6 @@ impl Spreadsheet {
             for col in start_col.min(end_col)..=start_col.max(end_col) {
                 if let Some(value) = self.get_cell_value(row, col) {
                     values.push(value);
-                } else {
-                    let cell_label = format!("{}{}", Self::column_index_to_label(col), row + 1);
-                    return Err(format!("invalid cell in range: {}", cell_label));
                 }
             }
         }
@@ -797,15 +777,11 @@ impl Spreadsheet {
     /// Parses and applies a cell assignment from user input.
     fn handle_assignment(&mut self, input: &str) -> Result<(), String> {
         let parts: Vec<&str> = input.splitn(2, '=').collect();
-        if parts.len() != 2 {
-            return Err("unrecognized cmd".to_string());
-        }
-
+        
         let cell_ref = parts[0].trim();
         let expr = parts[1].trim();
 
-        let (target_row, target_col) = Self::parse_cell_reference(cell_ref)
-            .ok_or_else(|| format!("invalid cell format: '{}'", cell_ref))?;
+        let (target_row, target_col) = Self::parse_cell_reference(cell_ref).unwrap();
 
         if target_row >= self.rows || target_col >= self.cols {
             return Err("target cell out of bounds".to_string());
@@ -825,13 +801,8 @@ impl Spreadsheet {
         self.cell_expressions
             .insert((target_row, target_col), parsed_expr.clone());
 
-        // Update the dependencies, and handle cycle detection here
-        if self
-            .update_dependencies((target_row, target_col), &parsed_expr)
-            .is_err()
-        {
-            return Err("cycle detected".to_string()); // Return early on cycle detection
-        }
+        // Update the dependencies
+        self.update_dependencies((target_row, target_col), &parsed_expr).unwrap();
 
         // Evaluate expression and handle errors
         let value = match self.evaluate_expression(&parsed_expr) {
@@ -1065,6 +1036,22 @@ mod tests {
 
         // SUM requires a range, not a single cell
         let result = sheet.process_input("A1 = SUM(B1)");
+        assert!(result.is_err());
+
+        // range must be in ascending order
+        let result = sheet.process_input("A1 = SUM(B2:B1)");
+        assert!(result.is_err());
+
+        // cell must be in bounds for SLEEP
+        let result = sheet.process_input("A1 = SLEEP(B57)");
+        assert!(result.is_err());
+
+        // functions require a valid start cell
+        let result = sheet.process_input("A1 = SUM(abcd:B1)");
+        assert!(result.is_err());
+
+        // functions require a valid end cell
+        let result = sheet.process_input("A1 = SUM(B1:abcd)");
         assert!(result.is_err());
 
         // SLEEP requires a literal or cell, not a range
