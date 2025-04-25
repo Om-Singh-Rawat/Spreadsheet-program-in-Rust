@@ -48,3 +48,4 @@ clean:
 	rm -f report/report.pdf
 	rm -f report.pdf
 	rm -f tarpaulin-report.html
+	cd spreadsheet_ui && cargo clean
