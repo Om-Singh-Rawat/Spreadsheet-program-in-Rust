@@ -23,7 +23,7 @@ test:
 	cargo test
 
 coverage:
-	cargo tarpaulin --out Html --exclude-files spreadsheet_ui/
+	cargo tarpaulin --out Html
 	xdg-open tarpaulin-report.html
 
 # ===== Documentation Generation =====

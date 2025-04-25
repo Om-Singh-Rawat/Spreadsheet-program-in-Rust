@@ -777,7 +777,7 @@ impl Spreadsheet {
     /// Parses and applies a cell assignment from user input.
     fn handle_assignment(&mut self, input: &str) -> Result<(), String> {
         let parts: Vec<&str> = input.splitn(2, '=').collect();
-        
+
         let cell_ref = parts[0].trim();
         let expr = parts[1].trim();
 
@@ -802,7 +802,8 @@ impl Spreadsheet {
             .insert((target_row, target_col), parsed_expr.clone());
 
         // Update the dependencies
-        self.update_dependencies((target_row, target_col), &parsed_expr).unwrap();
+        self.update_dependencies((target_row, target_col), &parsed_expr)
+            .unwrap();
 
         // Evaluate expression and handle errors
         let value = match self.evaluate_expression(&parsed_expr) {
@@ -942,8 +943,31 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     fn create_sheet(rows: usize, cols: usize) -> Spreadsheet {
         Spreadsheet::new(rows, cols)
+    }
+
+    #[test]
+    fn test_print_grid_output_enabled() {
+        let mut sheet = create_sheet(5, 5);
+        sheet.output_enabled = true;
+        sheet.grid[0][0] = 42;
+
+        // Just call it to ensure it doesn't panic
+        sheet.print_grid();
+    }
+
+    #[test]
+    fn test_print_grid_output_enabled_with_error() {
+        let mut sheet = create_sheet(5, 5);
+        sheet.output_enabled = true;
+
+        // Add an error to cell A1 (0, 0)
+        sheet.errors.insert((0, 0), "Some error".to_string());
+
+        // Call print_grid to ensure it prints "ERR" for cell A1
+        sheet.print_grid();
     }
 
     #[test]
