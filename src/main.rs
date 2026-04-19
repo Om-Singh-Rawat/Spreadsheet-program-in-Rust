@@ -446,12 +446,12 @@ impl Spreadsheet {
             // Decrease the in-degree for dependents.
             if let Some(dependents) = self.reverse_dependencies.get(&cell) {
                 for &dep in dependents {
-                    if affected.contains(&dep) {
-                        if let Some(degree) = in_degree.get_mut(&dep) {
-                            *degree = degree.saturating_sub(1);
-                            if *degree == 0 {
-                                topo_queue.push_back(dep);
-                            }
+                    if affected.contains(&dep)
+                        && let Some(degree) = in_degree.get_mut(&dep)
+                    {
+                        *degree = degree.saturating_sub(1);
+                        if *degree == 0 {
+                            topo_queue.push_back(dep);
                         }
                     }
                 }
@@ -835,10 +835,8 @@ impl Spreadsheet {
             }
 
             // Scroll down only if we are showing fewer than 10 rows at the bottom
-            "s" => {
-                if self.view_top + 10 < self.rows {
-                    self.view_top = (self.view_top + 10).min(self.rows - 10);
-                }
+            "s" if self.view_top + 10 < self.rows => {
+                self.view_top = (self.view_top + 10).min(self.rows - 10);
             }
 
             // Scroll left if possible
@@ -847,10 +845,8 @@ impl Spreadsheet {
             }
 
             // Scroll right only if we are showing fewer than 10 columns at the right
-            "d" => {
-                if self.view_left + 10 < self.cols {
-                    self.view_left = (self.view_left + 10).min(self.cols - 10);
-                }
+            "d" if self.view_left + 10 < self.cols => {
+                self.view_left = (self.view_left + 10).min(self.cols - 10);
             }
 
             _ => {}

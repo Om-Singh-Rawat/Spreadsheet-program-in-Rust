@@ -215,7 +215,7 @@ This builds the frontend and starts both servers **simultaneously**:
 ### Project Structure (Extension)
 
 ```
-.
+.cargo install wasm-pack
 ├── spreadsheet_ui/   # Front and back end files for the extension 
 |   ├── client/       # Yew-based frontend (compiled to WebAssembly)
 |   ├── core/         # Shared logic for parsing and evaluation
