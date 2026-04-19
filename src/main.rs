@@ -446,9 +446,10 @@ impl Spreadsheet {
             // Decrease the in-degree for dependents.
             if let Some(dependents) = self.reverse_dependencies.get(&cell) {
                 for &dep in dependents {
-                    if affected.contains(&dep)
-                        && let Some(degree) = in_degree.get_mut(&dep)
-                    {
+                    if !affected.contains(&dep) {
+                        continue;
+                    }
+                    if let Some(degree) = in_degree.get_mut(&dep) {
                         *degree = degree.saturating_sub(1);
                         if *degree == 0 {
                             topo_queue.push_back(dep);
